@@ -1,5 +1,5 @@
 cost_class,item,amount,frequency,scaling,scaling_param,phase
-depreciation,Edge Device,187.5,monthly,per_rig,24,prod
+depreciation,Edge Device,4500,monthly,per_rig,24,prod
 cogs,IP67 Rugged Tablet,3200,onetime,per_rig,,prod
 cogs,Rugged Tablet Desk Dock,600,onetime,per_rig,,prod
 cogs,Speedcast Installation,3000,onetime,per_rig,,prod
