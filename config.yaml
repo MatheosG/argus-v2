@@ -1,0 +1,67 @@
+# ============================================================
+# ARGUS v2 — Configuration
+# ============================================================
+
+simulation:
+  n_trials: 5000
+  months: 120        # 10-year projection
+  seed: 42
+
+# --- File References ---
+files:
+  staffing: "inputs/staffing.csv"
+  running_costs: "inputs/running_costs.csv"
+
+# --- Compensation Rules ---
+compensation:
+  benefits_base: 1.05
+  benefits_quarterly_increase: 0.02
+
+# --- Global Timeline ---
+timeline:
+  mvp_months: 6
+
+# ============================================================
+# Rig Classes — each has its own market params, timeline, revenue
+# ============================================================
+rig_classes:
+
+  onshore:
+    timeline:
+      first_rig_month: 7
+    revenue:
+      days_per_month: 30
+      installation_fee: 20000
+    market:
+      total_rigs_added:
+        distribution: triangular
+        params: { low: 51, mode: 220, high: 360 }
+      rigs_lost_per_year:
+        distribution: triangular
+        params: { low: 0, mode: 1, high: 3 }
+      daily_rate:
+        distribution: triangular
+        params: { low: 500, mode: 700, high: 900 }
+      utilization_rate:
+        distribution: triangular
+        params: { low: 0.27, mode: 0.44, high: 0.67 }
+
+  offshore:
+    timeline:
+      first_rig_month: 18
+    revenue:
+      days_per_month: 30
+      installation_fee: 10000
+    market:
+      total_rigs_added:
+        distribution: triangular
+        params: { low: 51, mode: 220, high: 360 }
+      rigs_lost_per_year:
+        distribution: triangular
+        params: { low: 0, mode: 1, high: 3 }
+      daily_rate:
+        distribution: triangular
+        params: { low: 1300, mode: 1500, high: 1800 }
+      utilization_rate:
+        distribution: triangular
+        params: { low: 0.60, mode: 0.75, high: 0.85 }
