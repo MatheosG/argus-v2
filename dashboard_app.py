@@ -188,6 +188,41 @@ def _layout(title, yt, margin=None):
                     bgcolor="rgba(255,255,255,.95)", bordercolor="#cbd5e1", borderwidth=1)
     )
 
+def _fan(bd, lo, mid, hi, title, yt):
+    """
+    bd: DataFrame returned by _pband() with columns: month, p5/p25/p50/...
+    lo/mid/hi: column names like 'p5', 'p50', 'p95'
+    """
+    fig = go.Figure()
+    m = bd["month"]
+
+    # Upper bound line (invisible), then fill down to lower bound
+    fig.add_trace(go.Scatter(
+        x=m, y=bd[hi],
+        line=dict(width=0),
+        showlegend=False,
+        hoverinfo="skip"
+    ))
+    fig.add_trace(go.Scatter(
+        x=m, y=bd[lo],
+        fill="tonexty",
+        line=dict(width=0),
+        fillcolor="rgba(37,99,235,.18)",
+        name=f"{lo.upper()}–{hi.upper()}",
+        hoverinfo="skip"
+    ))
+
+    # Median
+    fig.add_trace(go.Scatter(
+        x=m, y=bd[mid],
+        line=dict(color="#2563EB", width=3),
+        name=mid.upper()
+    ))
+
+    fig.update_layout(**_layout(title, yt))
+    fig.update_xaxes(**_xt(int(m.max())))
+    return fig
+
 def _pband(dt,col,ps=(5,25,50,75,95)):
     o=pd.DataFrame({"month":sorted(dt["month"].unique())})
     for p in ps:o[f"p{p}"]=dt.groupby("month")[col].quantile(p/100).values
