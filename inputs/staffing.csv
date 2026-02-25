@@ -1,0 +1,8 @@
+department,role,annual_salary,headcount,from_month,to_month,rigs_per_hire
+engineering,Software Architect Lead,144000,1,1,,
+engineering,Project Manager,67200,1,1,,
+engineering,Back End Developer Sr,86400,1,1,,
+engineering,Back End Developer Ssr,76800,1,1,6,
+engineering,Front End Developer Sr,81600,1,1,,
+engineering,UX UI Developer Sr,67200,1,1,,
+sales,Regional Sales,150000,1,12,,

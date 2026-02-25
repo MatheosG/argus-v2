@@ -1,0 +1,11 @@
+cost_class,item,amount,frequency,scaling,scaling_param,phase
+depreciation,Edge Device,4500,monthly,per_rig,24,prod
+cogs,Edge Device,4500,onetime,per_rig,,prod
+cogs,IP67 Rugged Tablet,3200,onetime,per_rig,,prod
+cogs,Speedcast Installation,3000,onetime,per_rig,,prod
+cogs,Starlink Installation,2500,onetime,per_rig,,prod
+cogs,Device Installation Materials,200,onetime,per_rig,,prod
+ga,Field Internet Speedcast,800,monthly,per_rig,,prod
+ga,Cloud Service,579,monthly,per_n_rigs,10,prod
+it_services,IT Services,1250,monthly,per_n_rigs,10,prod
+ga,Cloud Service MVP,28,monthly,fixed,,mvp
