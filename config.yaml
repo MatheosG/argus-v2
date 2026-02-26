@@ -1,5 +1,5 @@
 # ============================================================
-# ARGUS v2 — Configuration
+# ARGUS — Configuration
 # ============================================================
 
 simulation:
@@ -21,6 +21,13 @@ compensation:
 timeline:
   mvp_months: 6
 
+# --- Economics / TEA ---
+economics:
+  # Annual discount rate for NPV / DCF calculations
+  discount_rate:
+    distribution: triangular
+    params: { low: 0.08, mode: 0.10, high: 0.15 }
+
 # ============================================================
 # Rig Classes — each has its own market params, timeline, revenue
 # ============================================================
@@ -35,13 +42,13 @@ rig_classes:
     market:
       total_rigs_added:
         distribution: triangular
-        params: { low: 51, mode: 220, high: 360 }
+        params: { low: 5, mode: 8, high: 10 }
       rigs_lost_per_year:
         distribution: triangular
         params: { low: 0, mode: 1, high: 3 }
       daily_rate:
         distribution: triangular
-        params: { low: 500, mode: 700, high: 900 }
+        params: { low: 150, mode: 200, high: 280 }
       utilization_rate:
         distribution: triangular
         params: { low: 0.27, mode: 0.44, high: 0.67 }
@@ -61,7 +68,7 @@ rig_classes:
         params: { low: 0, mode: 1, high: 3 }
       daily_rate:
         distribution: triangular
-        params: { low: 1300, mode: 1500, high: 1800 }
+        params: { low: 300, mode: 500, high: 800 }
       utilization_rate:
         distribution: triangular
-        params: { low: 0.60, mode: 0.75, high: 0.85 }
+        params: { low: 0.27, mode: 0.44, high: 0.67 }
