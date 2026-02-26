@@ -78,15 +78,18 @@ def _resolve_market(market: dict, func) -> dict:
 
 
 def resolve_stochastic(config: dict, rng: np.random.Generator) -> dict:
-    """Resolve all stochastic params in rig_classes to concrete values."""
+    """Resolve all stochastic params in rig_classes and economics."""
     resolved = deepcopy(config)
     if "rig_classes" in resolved:
         for cls_name, cls_cfg in resolved["rig_classes"].items():
             if "market" in cls_cfg:
                 cls_cfg["market"] = _resolve_market(cls_cfg["market"], lambda v: sample_param(v, rng))
-    # Legacy: also resolve top-level 'market' if present
     if "market" in resolved:
         resolved["market"] = _resolve_market(resolved["market"], lambda v: sample_param(v, rng))
+    if "economics" in resolved:
+        for key, value in resolved["economics"].items():
+            if is_stochastic(value):
+                resolved["economics"][key] = sample_param(value, rng)
     return resolved
 
 
@@ -99,11 +102,15 @@ def resolve_deterministic(config: dict) -> dict:
                 cls_cfg["market"] = _resolve_market(cls_cfg["market"], mode_value)
     if "market" in resolved:
         resolved["market"] = _resolve_market(resolved["market"], mode_value)
+    if "economics" in resolved:
+        for key, value in resolved["economics"].items():
+            if is_stochastic(value):
+                resolved["economics"][key] = mode_value(value)
     return resolved
 
 
 def get_all_stochastic_params(config: dict) -> list[dict]:
-    """Extract all stochastic parameters across all rig classes."""
+    """Extract all stochastic parameters across rig classes and economics."""
     params = []
     if "rig_classes" in config:
         for cls_name, cls_cfg in config["rig_classes"].items():
@@ -111,4 +118,8 @@ def get_all_stochastic_params(config: dict) -> list[dict]:
                 for key, value in cls_cfg["market"].items():
                     if is_stochastic(value):
                         params.append({"class": cls_name, "key": key, "spec": value})
+    if "economics" in config:
+        for key, value in config["economics"].items():
+            if is_stochastic(value):
+                params.append({"class": "economics", "key": key, "spec": value})
     return params
