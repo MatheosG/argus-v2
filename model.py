@@ -1,5 +1,5 @@
 """
-model.py — Monthly P&L model for ARGUS.
+model.py — Monthly P&L & DCF model for ARGUS.
 
 Supports multiple rig classes (e.g. onshore, offshore), each with
 independent market params, timelines, and revenue models.
