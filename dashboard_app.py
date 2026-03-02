@@ -456,6 +456,153 @@ def render_tea_det(df, r_monthly, nm):
     fig.update_layout(**_layout("Annual Discounted Cashflow","USD"),barmode="relative")
     st.plotly_chart(fig,use_container_width=True,key="tea_wf_d")
 
+    # ─── Levelized Metrics ───
+    render_levelized_det(df, r_monthly, nm)
+
+
+def compute_levelized(df, r_monthly):
+    """Compute levelized cost/revenue metrics (analogous to LCOE).
+    LCR  = PV(total costs) / PV(active rig-months)
+    LCAD = PV(total costs) / PV(active rig-days)
+    LRRM = PV(total revenue) / PV(active rig-months)
+    """
+    months = df["month"].values.astype(float)
+    disc = np.array([(1 + r_monthly) ** (-m) for m in months])
+
+    rigs = df["rig_count"].values.astype(float)
+    util = np.where(rigs > 0, df["total_revenue"].values.astype(float) / np.maximum(rigs, 1), 0)  # avoid /0
+
+    # Active rig-months and rig-days
+    rig_months = rigs  # 1 rig for 1 month = 1 rig-month
+    rig_days = rigs * 30  # approximate
+
+    # Cost components
+    costs = df["total_costs"].values.astype(float) if "total_costs" in df.columns else (
+        df["total_compensation"].values + df["total_cogs"].values +
+        df["total_depreciation"].values + df["total_ga"].values + df["total_it"].values)
+    comp = df["total_compensation"].values.astype(float)
+    cogs = df["total_cogs"].values.astype(float)
+    depr = df["total_depreciation"].values.astype(float)
+    ga = df["total_ga"].values.astype(float)
+    it_ = df["total_it"].values.astype(float)
+    revenue = df["total_revenue"].values.astype(float)
+
+    pv_rig_months = float(np.sum(rig_months * disc))
+    pv_rig_days = float(np.sum(rig_days * disc))
+    pv_costs = float(np.sum(costs * disc))
+    pv_revenue = float(np.sum(revenue * disc))
+
+    # Component PVs for breakdown
+    pv_comp = float(np.sum(comp * disc))
+    pv_cogs = float(np.sum(cogs * disc))
+    pv_depr = float(np.sum(depr * disc))
+    pv_ga = float(np.sum(ga * disc))
+    pv_it = float(np.sum(it_ * disc))
+
+    if pv_rig_months <= 0:
+        return None  # no production
+
+    lcr = pv_costs / pv_rig_months
+    lcad = pv_costs / pv_rig_days if pv_rig_days > 0 else 0
+    lrrm = pv_revenue / pv_rig_months
+    argus_ratio = lrrm / lcr if lcr > 0 else float("inf")
+
+    # Component breakdown per rig-month
+    lcr_comp = pv_comp / pv_rig_months
+    lcr_cogs = pv_cogs / pv_rig_months
+    lcr_depr = pv_depr / pv_rig_months
+    lcr_ga = pv_ga / pv_rig_months
+    lcr_it = pv_it / pv_rig_months
+
+    # Running LCR by month (cumulative to that point)
+    cum_costs_d = np.cumsum(costs * disc)
+    cum_rm_d = np.cumsum(rig_months * disc)
+    cum_rev_d = np.cumsum(revenue * disc)
+    running_lcr = np.where(cum_rm_d > 0, cum_costs_d / cum_rm_d, np.nan)
+    running_lrrm = np.where(cum_rm_d > 0, cum_rev_d / cum_rm_d, np.nan)
+
+    return {
+        "lcr": lcr, "lcad": lcad, "lrrm": lrrm, "argus_ratio": argus_ratio,
+        "lcr_comp": lcr_comp, "lcr_cogs": lcr_cogs, "lcr_depr": lcr_depr,
+        "lcr_ga": lcr_ga, "lcr_it": lcr_it,
+        "pv_rig_months": pv_rig_months, "pv_rig_days": pv_rig_days,
+        "pv_costs": pv_costs, "pv_revenue": pv_revenue,
+        "months": months, "running_lcr": running_lcr, "running_lrrm": running_lrrm,
+    }
+
+
+def render_levelized_det(df, r_monthly, nm):
+    """Render levelized cost section for deterministic mode."""
+    lev = compute_levelized(df, r_monthly)
+    if lev is None:
+        st.info("No production months — cannot compute levelized metrics.")
+        return
+
+    st.divider()
+    st.subheader("⚖️ Levelized Cost Analysis")
+    st.caption("Analogous to LCOE — all-in discounted cost per unit of service delivered")
+
+    # KPI cards
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Levelized Cost / Rig-Month", f"${lev['lcr']:,.0f}")
+    k2.metric("Levelized Revenue / Rig-Month", f"${lev['lrrm']:,.0f}")
+    k3.metric("Levelized Cost / Rig-Day", f"${lev['lcad']:,.0f}")
+    k4.metric("ARGUS Ratio (LRRM/LCR)", f"{lev['argus_ratio']:.2f}x",
+              delta="Profitable" if lev['argus_ratio'] > 1 else "Unprofitable",
+              delta_color="normal" if lev['argus_ratio'] > 1 else "inverse")
+
+    la, lb = st.columns(2)
+
+    with la:
+        # Cost breakdown waterfall
+        cats = ["Compensation", "COGS", "Depreciation", "G&A", "IT", "Total LCR"]
+        vals = [lev["lcr_comp"], lev["lcr_cogs"], lev["lcr_depr"], lev["lcr_ga"], lev["lcr_it"], 0]
+        fig = go.Figure(go.Waterfall(
+            orientation="v",
+            measure=["absolute"] + ["relative"] * 4 + ["total"],
+            x=cats, y=vals,
+            connector=dict(line=dict(color="#94a3b8", width=1, dash="dot")),
+            increasing=dict(marker=dict(color="#DC2626")),
+            totals=dict(marker=dict(color="#0f172a")),
+            textposition="outside",
+            text=[f"${v:,.0f}" for v in vals[:-1]] + [f"${lev['lcr']:,.0f}"],
+        ))
+        fig.update_layout(**_layout("LCR Breakdown ($/rig-month)", "$/rig-month"), showlegend=False)
+        st.plotly_chart(fig, use_container_width=True, key="lev_wf_d")
+
+    with lb:
+        # Running LCR vs LRRM over time
+        fig = go.Figure()
+        mask = ~np.isnan(lev["running_lcr"])
+        fig.add_trace(go.Scatter(x=lev["months"][mask], y=lev["running_lcr"][mask],
+            line=dict(color="#DC2626", width=2.5), name="LCR (cost)"))
+        fig.add_trace(go.Scatter(x=lev["months"][mask], y=lev["running_lrrm"][mask],
+            line=dict(color="#2563EB", width=2.5), name="LRRM (revenue)"))
+        fig.add_trace(go.Scatter(x=lev["months"][mask],
+            y=lev["running_lrrm"][mask] - lev["running_lcr"][mask],
+            fill="tozeroy", fillcolor="rgba(5,150,105,0.1)",
+            line=dict(color="#059669", width=1, dash="dash"), name="Margin"))
+        fig.update_layout(**_layout("Levelized Cost vs Revenue (Cumulative)", "$/rig-month"))
+        fig.update_xaxes(**_xt(nm))
+        st.plotly_chart(fig, use_container_width=True, key="lev_run_d")
+
+    # Detailed breakdown table
+    st.markdown("#### Levelized Cost Breakdown")
+    bk = [
+        ["Compensation", f"${lev['lcr_comp']:,.0f}", f"{lev['lcr_comp']/lev['lcr']*100:.1f}%"],
+        ["COGS (Hardware)", f"${lev['lcr_cogs']:,.0f}", f"{lev['lcr_cogs']/lev['lcr']*100:.1f}%"],
+        ["Depreciation", f"${lev['lcr_depr']:,.0f}", f"{lev['lcr_depr']/lev['lcr']*100:.1f}%"],
+        ["G&A (Internet + Cloud)", f"${lev['lcr_ga']:,.0f}", f"{lev['lcr_ga']/lev['lcr']*100:.1f}%"],
+        ["IT Services", f"${lev['lcr_it']:,.0f}", f"{lev['lcr_it']/lev['lcr']*100:.1f}%"],
+        ["**Total LCR**", f"**${lev['lcr']:,.0f}**", "**100%**"],
+        ["", "", ""],
+        ["Levelized Revenue / Rig-Month", f"${lev['lrrm']:,.0f}", ""],
+        ["**Levelized Margin / Rig-Month**", f"**${lev['lrrm']-lev['lcr']:,.0f}**",
+         f"**{(lev['lrrm']-lev['lcr'])/lev['lrrm']*100:.1f}% margin**" if lev['lrrm'] > 0 else ""],
+    ]
+    st.dataframe(pd.DataFrame(bk, columns=["Component", "$/Rig-Month", "Share"]),
+                 hide_index=True, use_container_width=True)
+
 
 def render_tea_mc(dfm, mc_data, r_monthly_fallback, nm, band):
     """TEA section for Monte Carlo mode. Uses per-trial sampled discount rates."""
@@ -544,6 +691,69 @@ def render_tea_mc(dfm, mc_data, r_monthly_fallback, nm, band):
         if len(vi):r["IRR"]=f"{np.percentile(vi,p):.1%}"
         rows.append(r)
     st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True)
+
+    # ─── Levelized Metrics (MC) ───
+    st.divider()
+    st.subheader("⚖️ Levelized Cost Analysis (Monte Carlo)")
+    st.caption("Distribution of levelized metrics across all trials")
+
+    lcrs=[];lrrms=[];lcads=[];ratios=[]
+    for idx,t in enumerate(trials):
+        tdf=dfm[dfm["trial"]==t].sort_values("month")
+        ms=tdf["month"].values.astype(float);rigs=tdf["rigs"].values.astype(float)
+        rev=tdf["revenue"].values.astype(float)
+        # Reconstruct costs from available columns
+        costs_cols=["total_cogs","total_compensation","total_depreciation","total_ga","total_it"]
+        if all(c in tdf.columns for c in costs_cols):
+            tc=(tdf["total_cogs"]+tdf["total_compensation"]+tdf["total_depreciation"]+tdf["total_ga"]+tdf["total_it"]).values.astype(float)
+        else:
+            tc=(tdf["revenue"]-tdf["profit"]).values.astype(float)
+        if disc_rates is not None and idx<len(disc_rates):
+            r_a=disc_rates[idx];r_m=(1+r_a)**(1/12)-1
+        else:r_m=r_monthly_fallback
+        d=np.array([(1+r_m)**(-m)for m in ms])
+        pv_rm=float(np.sum(rigs*d));pv_rd=float(np.sum(rigs*30*d))
+        pv_c=float(np.sum(tc*d));pv_r=float(np.sum(rev*d))
+        if pv_rm>0:
+            lcrs.append(pv_c/pv_rm);lrrms.append(pv_r/pv_rm);lcads.append(pv_c/pv_rd if pv_rd>0 else 0)
+            ratios.append((pv_r/pv_rm)/(pv_c/pv_rm)if pv_c>0 else 0)
+
+    if lcrs:
+        lcrs=np.array(lcrs);lrrms=np.array(lrrms);lcads=np.array(lcads);ratios=np.array(ratios)
+
+        k1,k2,k3,k4=st.columns(4)
+        k1.metric("LCR P50",f"${np.median(lcrs):,.0f}/rig-mo")
+        k2.metric("LRRM P50",f"${np.median(lrrms):,.0f}/rig-mo")
+        k3.metric("LCAD P50",f"${np.median(lcads):,.0f}/rig-day")
+        k4.metric("ARGUS Ratio P50",f"{np.median(ratios):.2f}x",
+            delta="Profitable"if np.median(ratios)>1 else"Unprofitable",
+            delta_color="normal"if np.median(ratios)>1 else"inverse")
+
+        la,lb=st.columns(2)
+        with la:
+            fig=go.Figure()
+            fig.add_trace(go.Box(y=lcrs,name="LCR",marker_color="#DC2626",boxpoints="outliers"))
+            fig.add_trace(go.Box(y=lrrms,name="LRRM",marker_color="#2563EB",boxpoints="outliers"))
+            fig.update_layout(**_layout("LCR vs LRRM Distribution","$/rig-month"))
+            st.plotly_chart(fig,use_container_width=True,key="lev_box_mc")
+        with lb:
+            fig=go.Figure()
+            fig.add_trace(go.Box(y=ratios,name="ARGUS Ratio",marker_color="#059669",boxpoints="outliers"))
+            fig.add_hline(y=1.0,line_dash="dash",line_color="#DC2626",line_width=2,
+                annotation_text="Breakeven (1.0x)",annotation_position="top right")
+            fig.update_layout(**_layout("ARGUS Ratio Distribution","Ratio"))
+            st.plotly_chart(fig,use_container_width=True,key="lev_ratio_mc")
+
+        st.markdown("#### Levelized Percentiles")
+        lrows=[]
+        for p in[5,25,50,75,95]:
+            lrows.append({"Pctl":f"P{p}",
+                "LCR ($/rig-mo)":f"${np.percentile(lcrs,p):,.0f}",
+                "LRRM ($/rig-mo)":f"${np.percentile(lrrms,p):,.0f}",
+                "LCAD ($/rig-day)":f"${np.percentile(lcads,p):,.0f}",
+                "Margin ($/rig-mo)":f"${np.percentile(lrrms-lcrs,p):,.0f}",
+                "ARGUS Ratio":f"{np.percentile(ratios,p):.2f}x"})
+        st.dataframe(pd.DataFrame(lrows),hide_index=True,use_container_width=True)
 
 
 # ═══════════════════════════════════════════════
@@ -1149,7 +1359,49 @@ The model operates in two modes:
     st.divider()
 
     # ────────────────────────────────
-    # 7. LIMITATIONS
+    # 7. LEVELIZED COST METHODOLOGY
+    # ────────────────────────────────
+    st.subheader("⚖️ Levelized Cost Methodology")
+    st.markdown("""
+The model computes **levelized cost metrics** analogous to Levelized Cost of Energy (LCOE) used in
+power generation economics. These metrics normalize all discounted costs and revenues by the
+discounted quantity of service delivered, enabling scale-independent comparison.
+""")
+
+    st.markdown("#### Definitions")
+    st.markdown(r"""
+| Metric | Formula | Interpretation |
+|--------|---------|----------------|
+| **LCR** (Levelized Cost per Rig-Month) | $\frac{\sum_t \text{Costs}_t \cdot (1+r)^{-t}}{\sum_t \text{Rigs}_t \cdot (1+r)^{-t}}$ | All-in cost to monitor one rig for one month |
+| **LCAD** (Levelized Cost per Active Day) | $\frac{\sum_t \text{Costs}_t \cdot (1+r)^{-t}}{\sum_t (\text{Rigs}_t \times 30) \cdot (1+r)^{-t}}$ | Cost per rig-day, compare directly to daily rate |
+| **LRRM** (Levelized Revenue per Rig-Month) | $\frac{\sum_t \text{Revenue}_t \cdot (1+r)^{-t}}{\sum_t \text{Rigs}_t \cdot (1+r)^{-t}}$ | Revenue earned per rig-month of service |
+| **ARGUS Ratio** | $\frac{\text{LRRM}}{\text{LCR}}$ | Benefit-cost ratio; > 1.0 = profitable at scale |
+""")
+
+    st.markdown("#### Why Levelized Metrics?")
+    st.markdown("""
+- **Scale-independent**: LCR tells you the economics of the Nth rig, stripping out ramp-up distortion from fixed costs being spread over few rigs early on
+- **Time-value aware**: All values are discounted, so early costs weigh more than late costs
+- **Comparable**: LCR is directly comparable to daily_rate × utilization × 30 (the monthly revenue per rig). If LRRM > LCR, the business is viable at scale
+- **Decomposable**: LCR breaks down into compensation, hardware, connectivity, cloud, and IT components — showing investors exactly where the money goes per rig
+- **Convergent**: The running LCR chart shows how levelized cost drops over time as fixed costs amortize across a growing fleet — the model shows the crossover point where LCR falls below LRRM
+""")
+
+    st.markdown("#### LCR Component Breakdown")
+    st.markdown("""
+The LCR consists of five cost categories, each levelized over the same discounted rig-month denominator:
+
+- **Compensation** — typically the largest component during ramp-up, as the team is hired before rigs generate revenue. Declines as a share of LCR as fleet grows
+- **COGS (Hardware)** — one-time installation costs ($7,000/rig) amortized over the rig's discounted service life
+- **Depreciation** — edge device capital ($4,500/24 months) allocated monthly per rig
+- **G&A** — field internet ($800/rig/month) plus cloud infrastructure ($579/10 rigs), the main variable cost
+- **IT Services** — software support ($1,250/10 rigs), scales in steps
+""")
+
+    st.divider()
+
+    # ────────────────────────────────
+    # 8. LIMITATIONS
     # ────────────────────────────────
     st.subheader("⚠️ Key Assumptions & Limitations")
     st.markdown("""
@@ -1161,6 +1413,9 @@ The model operates in two modes:
 - Installation revenue and costs (per-class fees)
 - Rig churn / contract loss (per-class rates)
 - Multiple rig classes with independent markets
+- Stochastic discount rate (triangular distribution)
+- NPV, IRR, Payback Period, Maximum Funding Exposure
+- Levelized cost metrics (LCR, LCAD, LRRM, ARGUS Ratio)
 
 **NOT included (potential additions):**
 - Income tax / corporate tax
@@ -1172,7 +1427,6 @@ The model operates in two modes:
 - Legal & professional fees
 - Training costs for field technicians
 - Field pick-up truck costs (currently disabled)
-- Discount rate / NPV / IRR calculations
 - Currency risk (all USD)
 - Customer concentration risk
 - Seasonal utilization patterns
@@ -1187,6 +1441,8 @@ The model operates in two modes:
 - Benefits multiplier increases quarterly
 - Cloud and IT costs scale in steps of 10 rigs (not linear)
 - COGS and depreciation are the same for onshore and offshore rigs
+- Levelized metrics use rig-months as denominator (not active days) for primary analysis
+- Discount rate sampled per trial in Monte Carlo (not fixed across trials)
 """)
 
 st.divider();st.caption(f"ARGUS · {nm} months · {', '.join(cn.title() for cn in cnames)} · {cp}")
