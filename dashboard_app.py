@@ -775,12 +775,11 @@ with st.sidebar:
     st.header("⚙️ Config")
     cp=st.text_input("Config",value="config.yaml")
     nm=st.number_input("Months",12,240,_dm,12)
-    mode=st.radio("Mode",["📊 Deterministic","🎲 Monte Carlo","📐 Sensitivity","📖 Assumptions"])
+    mode=st.radio("Mode",["📊 Deterministic","🎲 Monte Carlo","📐 Sensitivity","💰 InvestNow","📖 Assumptions"])
     st.divider()
     # Discount rate for TEA (shown for Determ and MC)
-    if "Determ" in mode or "Monte" in mode or "Sensit" in mode:
+    if "Determ" in mode or "Monte" in mode or "Sensit" in mode or "Invest" in mode:
         st.header("💹 TEA Settings")
-        # Read from config, show mode as default
         _econ = _c.get("economics", {}) if '_c' in dir() else {}
         _dr_spec = _econ.get("discount_rate", 0.10)
         if isinstance(_dr_spec, dict) and "params" in _dr_spec:
@@ -797,6 +796,11 @@ with st.sidebar:
     elif"Monte"in mode:
         mc_n=st.number_input("Trials",100,50000,_dt,500)
         mc_b=st.selectbox("Band",["P5–P95","P10–P90","P25–P75"])
+    elif"Invest"in mode:
+        st.header("💰 Investment")
+        inv_amount=st.number_input("Investment ($)",50_000,50_000_000,1_000_000,100_000)
+        inv_buffer=st.number_input("Safety Buffer ($)",0,500_000,50_000,10_000)
+        inv_priority=st.selectbox("Deploy Priority",["onshore_first","offshore_first","balanced"])
 
 try:
     base=load_config(cp);base["simulation"]["months"]=nm
@@ -1049,6 +1053,196 @@ elif"Sensit"in mode:
         st.plotly_chart(fig,use_container_width=True)
         if"Profit"in sa_output:
             bc=np.sum(z>0);st.caption(f"**{bc}/{z.size}** scenarios ({100*bc/z.size:.0f}%) profitable")
+
+# ─── INVESTNOW ───
+elif"Invest"in mode:
+    from invest import run_constrained_trial, run_investment_comparison
+    det_cfg=resolve_deterministic(base)
+
+    st.subheader("💰 ARGUS InvestNow — Capital-Constrained Scenario")
+    st.caption(f"Investment: ${inv_amount:,.0f} · Safety buffer: ${inv_buffer:,.0f} · Priority: {inv_priority.replace('_',' ').title()}")
+
+    # ─── Run main scenario ───
+    inv_res = run_constrained_trial(det_cfg, ro, ci, inv_amount, inv_buffer, inv_priority)
+    inv_df = to_df(inv_res)
+
+    # Also run unconstrained for comparison
+    unc_df = to_df(run_single_trial(det_cfg, ro, ci, np.random.default_rng(0), deterministic=True))
+
+    final = inv_res[-1]
+    unc_final = unc_df.iloc[-1]
+
+    # ─── KPI cards ───
+    total_blocked = sum(r.get("rigs_blocked", 0) for r in inv_res)
+    min_cash = min(r.get("cash_pool", inv_amount) for r in inv_res)
+    be_inv = None
+    for r in inv_res:
+        if r["cumulative_profit"] > 0 and r["month"] > 0:
+            be_inv = r["month"]; break
+    moic = (final["cumulative_profit"] + inv_amount) / inv_amount if inv_amount > 0 else 0
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Final Rigs", f"{final['rig_count']}", delta=f"vs {int(unc_final['rig_count'])} unconstrained")
+    k2.metric("Breakeven", f"Month {be_inv}" if be_inv else "Never",
+              delta=f"vs M{int(be_month(unc_df))}" if be_month(unc_df) else "")
+    k3.metric("MOIC", f"{moic:.1f}x" if moic > 0 else "N/A",
+              help="Multiple on Invested Capital = (Cumulative Profit + Investment) / Investment")
+    k4.metric("Min Cash Pool", money(min_cash),
+              delta="Healthy" if min_cash > inv_buffer else "Below buffer!",
+              delta_color="normal" if min_cash > inv_buffer else "inverse")
+
+    k5, k6, k7, k8 = st.columns(4)
+    k5.metric("Cumulative Profit", money(final["cumulative_profit"]))
+    k6.metric("Total Revenue", money(inv_df["total_revenue"].sum()))
+    k7.metric("Rigs Blocked", f"{total_blocked:,}", help="Total deployment-months blocked by capital constraint")
+    k8.metric("Final Cash Pool", money(final.get("cash_pool", 0)))
+
+    st.divider()
+
+    # ─── Cash Pool Chart ───
+    la, lb = st.columns(2)
+    with la:
+        fig = go.Figure()
+        cp_vals = [r.get("cash_pool", inv_amount) for r in inv_res]
+        months_arr = [r["month"] for r in inv_res]
+        fig.add_trace(go.Scatter(x=months_arr, y=cp_vals, fill="tozeroy",
+            fillcolor="rgba(37,99,235,0.12)", line=dict(color="#2563EB", width=2.5),
+            name="Cash Pool"))
+        fig.add_hline(y=inv_buffer, line_dash="dash", line_color="#DC2626", line_width=1.5,
+            annotation_text=f"Safety Buffer: ${inv_buffer:,.0f}", annotation_position="top right",
+            annotation_font_color="#DC2626")
+        fig.add_hline(y=0, line_color="#94a3b8", line_width=1, line_dash="dot")
+        fig.add_hline(y=inv_amount, line_dash="dot", line_color="#059669", line_width=1,
+            annotation_text=f"Investment: ${inv_amount:,.0f}", annotation_position="bottom right",
+            annotation_font_color="#059669")
+        fig.update_layout(**_layout("Cash Pool Over Time", "USD"))
+        fig.update_xaxes(**_xt(nm))
+        st.plotly_chart(fig, use_container_width=True, key="inv_cash")
+
+    with lb:
+        # Rig deployment: constrained vs unconstrained
+        fig = go.Figure()
+        for cn in cnames:
+            inv_rigs = [r["by_class"].get(cn, {}).get("rigs", 0) for r in inv_res]
+            fig.add_trace(go.Scatter(x=months_arr, y=inv_rigs,
+                line=dict(width=2.5, color=CLASS_COLORS.get(cn, "#2563EB")),
+                name=f"{cn.title()} (funded)"))
+            unc_rigs = []
+            for _, row in unc_df.iterrows():
+                bc = row.get("by_class", {})
+                if isinstance(bc, dict):
+                    unc_rigs.append(bc.get(cn, {}).get("rigs", 0))
+                else:
+                    unc_rigs.append(0)
+            fig.add_trace(go.Scatter(x=unc_df["month"].values, y=unc_rigs,
+                line=dict(width=1.5, dash="dot", color=CLASS_COLORS.get(cn, "#2563EB")),
+                name=f"{cn.title()} (unconstrained)", opacity=0.5))
+        fig.update_layout(**_layout("Rig Deployment: Funded vs Unconstrained", "Rigs"))
+        fig.update_xaxes(**_xt(nm))
+        st.plotly_chart(fig, use_container_width=True, key="inv_rigs")
+
+    # ─── Revenue comparison ───
+    la2, lb2 = st.columns(2)
+    with la2:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=inv_df["month"], y=inv_df["cumulative_profit"],
+            line=dict(color="#2563EB", width=2.5), name="Funded"))
+        fig.add_trace(go.Scatter(x=unc_df["month"], y=unc_df["cumulative_profit"],
+            line=dict(color="#94a3b8", width=1.5, dash="dot"), name="Unconstrained"))
+        fig.add_hline(y=0, line_color="#94a3b8", line_width=1, line_dash="dot")
+        fig.update_layout(**_layout("Cumulative Profit: Funded vs Unconstrained", "USD"))
+        fig.update_xaxes(**_xt(nm))
+        st.plotly_chart(fig, use_container_width=True, key="inv_cum")
+
+    with lb2:
+        # Blocked rigs over time
+        blocked = [r.get("rigs_blocked", 0) for r in inv_res]
+        if sum(blocked) > 0:
+            fig = go.Figure(go.Bar(x=months_arr, y=blocked, marker_color="#DC2626", name="Blocked"))
+            fig.update_layout(**_layout("Rigs Blocked by Capital Constraint", "Rigs"))
+            fig.update_xaxes(**_xt(nm))
+            st.plotly_chart(fig, use_container_width=True, key="inv_blocked")
+        else:
+            st.success("✅ No rigs blocked — investment fully funds the market plan.")
+            st.metric("Capital Utilization", f"{(1 - min_cash / inv_amount) * 100:.0f}%" if inv_amount > 0 else "N/A",
+                      help="Percentage of investment deployed at peak burn")
+
+    # ─── TEA for this scenario ───
+    st.divider()
+    tea_inv = compute_tea(inv_df, disc_rate_monthly)
+    st.subheader("💹 TEA — Funded Scenario")
+    tk1, tk2, tk3, tk4 = st.columns(4)
+    tk1.metric("NPV", money(tea_inv["npv"]))
+    tk2.metric("IRR", f"{tea_inv['irr']:.1%}" if tea_inv["irr"] else "N/A")
+    tk3.metric("Payback", f"{tea_inv['pot_yr']:.1f} yr" if tea_inv["pot_yr"] else "Never")
+    tk4.metric("NPV / $ Invested", f"{tea_inv['npv']/inv_amount:.1f}x" if inv_amount > 0 else "N/A")
+
+    # ─── Investment Comparison Table ───
+    st.divider()
+    st.subheader("📊 Investment Scenarios Comparison")
+    st.caption("How returns scale with investment amount")
+
+    # Build comparison scenarios
+    comp_amounts = sorted(set([250_000, 500_000, 750_000, 1_000_000, 1_500_000, 2_000_000, 3_000_000, 5_000_000, inv_amount]))
+    comp = run_investment_comparison(det_cfg, ro, ci, comp_amounts, inv_buffer, inv_priority)
+
+    comp_rows = []
+    for c in comp:
+        be_str = f"M{c['breakeven_month']}" if c["breakeven_month"] else "Never"
+        is_current = abs(c["investment"] - inv_amount) < 1
+        # Compute NPV for this scenario
+        cdf = to_df(c["results"])
+        ct = compute_tea(cdf, disc_rate_monthly)
+        npv_per_dollar = ct["npv"] / c["investment"] if c["investment"] > 0 else 0
+
+        comp_rows.append({
+            "💰 Investment": f"{'→ ' if is_current else ''}${c['investment']:,.0f}",
+            "Rigs (On+Off)": f"{c['final_onshore']}+{c['final_offshore']}={c['final_rigs']}",
+            "Revenue": money(c["total_revenue"]),
+            "Profit": money(c["cumulative_profit"]),
+            "Breakeven": be_str,
+            "MOIC": f"{c['moic']:.1f}x",
+            "NPV": money(ct["npv"]),
+            "NPV/$": f"{npv_per_dollar:.1f}x",
+            "Min Cash": money(c["min_cash"]),
+            "Blocked": f"{c['total_blocked']:,}",
+        })
+
+    st.dataframe(pd.DataFrame(comp_rows), hide_index=True, use_container_width=True)
+
+    # ─── Marginal analysis chart ───
+    st.markdown("#### Investment Efficiency Curve")
+    la3, lb3 = st.columns(2)
+    with la3:
+        inv_vals = [c["investment"] for c in comp]
+        npv_vals = [compute_tea(to_df(c["results"]), disc_rate_monthly)["npv"] for c in comp]
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=[v/1e6 for v in inv_vals], y=[v/1e6 for v in npv_vals],
+            mode="lines+markers", line=dict(color="#2563EB", width=2.5),
+            marker=dict(size=8), name="NPV"))
+        # Mark current
+        cur_npv = tea_inv["npv"]
+        fig.add_trace(go.Scatter(x=[inv_amount/1e6], y=[cur_npv/1e6],
+            mode="markers", marker=dict(size=14, color="#DC2626", symbol="star"),
+            name="Your Investment"))
+        fig.update_layout(**_layout("NPV vs Investment Amount", "NPV ($M)"))
+        fig.update_xaxes(title="Investment ($M)")
+        st.plotly_chart(fig, use_container_width=True, key="inv_npv_curve")
+
+    with lb3:
+        moic_vals = [c["moic"] for c in comp]
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=[v/1e6 for v in inv_vals], y=moic_vals,
+            mode="lines+markers", line=dict(color="#059669", width=2.5),
+            marker=dict(size=8), name="MOIC"))
+        fig.add_trace(go.Scatter(x=[inv_amount/1e6], y=[moic],
+            mode="markers", marker=dict(size=14, color="#DC2626", symbol="star"),
+            name="Your Investment"))
+        fig.add_hline(y=1.0, line_dash="dash", line_color="#94a3b8",
+            annotation_text="1.0x (break even)", annotation_position="top right")
+        fig.update_layout(**_layout("MOIC vs Investment Amount", "Multiple"))
+        fig.update_xaxes(title="Investment ($M)")
+        st.plotly_chart(fig, use_container_width=True, key="inv_moic_curve")
 
 # ─── ASSUMPTIONS ───
 elif"Assum"in mode:
@@ -1401,7 +1595,124 @@ The LCR consists of five cost categories, each levelized over the same discounte
     st.divider()
 
     # ────────────────────────────────
-    # 8. LIMITATIONS
+    # 8. INVESTNOW METHODOLOGY
+    # ────────────────────────────────
+    st.subheader("💰 InvestNow — Capital-Constrained Deployment")
+    st.markdown("""
+The **InvestNow** mode simulates how a specific investment amount constrains the deployment of rigs
+over time. Unlike the base model (which deploys rigs based on market demand without capital limits),
+InvestNow only deploys a rig when the company can afford it.
+""")
+
+    st.markdown("#### How It Works")
+    st.code("""
+  Cash Pool = Investment Amount + Cumulative Net Income
+
+  Each month:
+    1. Compute cash_available = investment + cumulative_profit_to_date
+    2. For each rig class (in priority order):
+       a. Determine how many rigs the MARKET wants (same as base model)
+       b. For each desired rig:
+          - Can we afford it?
+          - Check: cash_available - deploy_costs >= safety_buffer
+          - YES → deploy rig, deduct COGS ($7,000)
+          - NO  → rig BLOCKED (demand exists but capital doesn't)
+    3. Compute revenue from deployed rigs only
+    4. Compute all costs (compensation, G&A, IT — same as base)
+    5. Update cumulative profit → update cash pool
+""", language="text")
+
+    st.markdown("#### Walk-Through Example")
+
+    # Generate a dynamic example from the actual data
+    _inv_det = resolve_deterministic(base)
+    _inv_ro = load_staffing(base["files"]["staffing"])
+    _inv_ci = load_running_costs(base["files"]["running_costs"])
+    from staffing import compute_monthly_compensation, get_benefits_multiplier
+    _b1 = get_benefits_multiplier(1, base["compensation"]["benefits_base"], base["compensation"]["benefits_quarterly_increase"])
+    _c1 = compute_monthly_compensation(_inv_ro, 1, 0, _b1)
+    _monthly_burn = _c1["total"]
+    _mvp = base["timeline"]["mvp_months"]
+    _mvp_burn = _monthly_burn * _mvp
+
+    # Find the minimum viable investment from comparison data
+    from invest import run_investment_comparison
+    _test_amts = [250_000, 500_000, 1_000_000, 1_500_000, 2_000_000, 3_000_000, 4_000_000, 5_000_000, 7_500_000, 10_000_000]
+    _test_comp = run_investment_comparison(_inv_det, _inv_ro, _inv_ci, _test_amts, 50_000, "onshore_first")
+    _mvi = None
+    for _tc in _test_comp:
+        if _tc["breakeven_month"] is not None:
+            _mvi = _tc; break
+    _small = _test_comp[0]  # smallest investment
+
+    st.markdown(f"""
+The model's behavior depends entirely on your staffing costs, rig class parameters, and timeline.
+Here is how it works with your current inputs:
+
+**Your monthly burn rate:** ~{money(_monthly_burn)}/month in compensation alone (from staffing.csv).
+During the {_mvp}-month MVP phase, this burns ~{money(_mvp_burn)} before any rig is deployed.
+
+**The capital constraint logic, step by step:**
+
+1. **Month 0:** Investment is received → cash pool = investment amount
+2. **Months 1–{_mvp} (MVP):** Team salaries burn ~{money(_monthly_burn)}/mo. No rigs, no revenue. Cash pool shrinks by ~{money(_mvp_burn)}
+3. **Month {base['rig_classes'][list(base['rig_classes'].keys())[0]]['timeline']['first_rig_month']}+:** First rig class eligible for deployment. Each rig costs $7,000 COGS to deploy. The model checks: *can we afford the COGS and still stay above the safety buffer?*
+4. **If YES:** Rig deployed → starts generating revenue → cash pool stabilizes → more rigs can be deployed → virtuous cycle
+5. **If NO:** Rig **blocked** → no revenue growth → burn continues → cash pool keeps falling → more rigs blocked → death spiral
+""")
+
+    if _mvi:
+        st.markdown(f"""
+**With your current inputs, the minimum viable investment is approximately {money(_mvi['investment'])}.**
+At this level, the company reaches breakeven at Month {_mvi['breakeven_month']} and achieves a {_mvi['moic']:.1f}x MOIC.
+Below this threshold, the company cannot deploy enough rigs to overcome the fixed compensation burn.
+""")
+    else:
+        st.markdown("""
+**With your current inputs, none of the test scenarios reached breakeven.** This suggests either
+very high fixed costs relative to per-rig revenue, or a very long ramp-up period. Consider
+adjusting staffing timeline, rig pricing, or market size.
+""")
+
+    st.markdown("""
+**Why is there a cliff?** The transition from "not viable" to "highly profitable" is sharp because
+of the positive feedback loop: more rigs → more revenue → more cash → more rigs deployed faster
+→ even more revenue. Once you cross the threshold where monthly revenue exceeds monthly costs,
+growth becomes self-funding and accelerates. Below the threshold, the opposite happens — a
+negative spiral where fixed costs drain the cash pool and prevent any growth.
+
+**What determines the minimum viable investment?**
+- **Compensation burn rate** — higher salaries / more staff → need more runway
+- **MVP length** — longer MVP → more cash burned before revenue starts
+- **Offshore start month** — later offshore entry → longer wait for high-revenue rigs
+- **Per-rig revenue** — higher daily rates / utilization → fewer rigs needed to cover costs
+- **Safety buffer** — higher buffer → more conservative, needs more capital
+""")
+
+    st.markdown("#### Key Parameters")
+    inv_explain = [
+        ["Investment Amount", "Total capital injected at Month 0", "Determines cash runway through the burn period"],
+        ["Safety Buffer", "Minimum cash reserve before deploying a rig", "Prevents insolvency; higher = more conservative, needs more capital"],
+        ["Deploy Priority", "Order in which rig classes are funded", "Onshore first = lower risk, earlier but lower revenue; Offshore first = higher revenue but needs more capital"],
+        ["COGS per Rig", "$7,000 one-time hardware cost", "Deducted from cash pool at deployment"],
+    ]
+    st.dataframe(pd.DataFrame(inv_explain, columns=["Parameter", "Description", "Impact"]),
+                 hide_index=True, use_container_width=True)
+
+    st.markdown("#### Performance Metrics")
+    st.markdown("""
+- **MOIC** (Multiple on Invested Capital) = (Cumulative Profit + Investment) / Investment. A 10x MOIC means the investor gets back 10× their money
+- **NPV / $ Invested** = NPV of all cashflows / investment amount. Measures capital efficiency — higher is better
+- **Rigs Blocked** = total rig-deployment-months where market demand existed but capital did not. Zero blocked = investment fully funds the plan
+- **Min Cash Pool** = lowest cash balance during the simulation. If deeply negative, the company would have been insolvent without additional funding
+- **Investment Efficiency Curve** = shows diminishing returns: the first dollar past the minimum viable threshold has enormous impact, additional capital above that adds safety but lower per-dollar returns
+- **The Cliff** = the sharp transition in the comparison table from "Never breaks even" to "Highly profitable." This is the minimum viable investment — the amount needed to survive until the fleet becomes self-funding
+""")
+
+    st.divider()
+
+    # ────────────────────────────────
+    # 9. LIMITATIONS
     # ────────────────────────────────
     st.subheader("⚠️ Key Assumptions & Limitations")
     st.markdown("""
@@ -1416,6 +1727,7 @@ The LCR consists of five cost categories, each levelized over the same discounte
 - Stochastic discount rate (triangular distribution)
 - NPV, IRR, Payback Period, Maximum Funding Exposure
 - Levelized cost metrics (LCR, LCAD, LRRM, ARGUS Ratio)
+- Capital-constrained deployment simulation (InvestNow)
 
 **NOT included (potential additions):**
 - Income tax / corporate tax
@@ -1443,6 +1755,9 @@ The LCR consists of five cost categories, each levelized over the same discounte
 - COGS and depreciation are the same for onshore and offshore rigs
 - Levelized metrics use rig-months as denominator (not active days) for primary analysis
 - Discount rate sampled per trial in Monte Carlo (not fixed across trials)
+- InvestNow: capital check uses current cash pool vs safety buffer + deployment COGS
+- InvestNow: no external debt or follow-on funding rounds (single injection at Month 0)
+- InvestNow: compensation costs continue regardless of deployment (team is hired early)
 """)
 
 st.divider();st.caption(f"ARGUS · {nm} months · {', '.join(cn.title() for cn in cnames)} · {cp}")
