@@ -167,14 +167,14 @@ def pnl_html(df, class_names):
 
 # ═══ Charts ═══
 def _layout(title,yt):
-    return dict(title=dict(text=title,font=dict(size=14,color="#1e293b"),y=0.98,yanchor="top"),
+    return dict(title=dict(text=title,font=dict(size=14,color="#1e293b"),x=0.01,xanchor="left",y=0.95,yanchor="top",pad=dict(b=10)),
         font=dict(family="IBM Plex Sans",size=12,color="#334155"),
-        plot_bgcolor="#fff",paper_bgcolor="#fff",margin=dict(l=60,r=20,t=80,b=50),
+        plot_bgcolor="#fff",paper_bgcolor="#fff",margin=dict(l=60,r=20,t=90,b=50),
         xaxis=dict(showgrid=False,linecolor="#1e293b",linewidth=1.5,tickfont=dict(color="#475569",size=11)),
         yaxis=dict(title=yt,gridcolor="#e2e8f0",gridwidth=.5,linecolor="#1e293b",linewidth=1.5,
             zeroline=True,zerolinecolor="#94a3b8",zerolinewidth=1,tickfont=dict(color="#475569",size=11)),
-        legend=dict(orientation="h",yanchor="bottom",y=1.12,xanchor="left",x=0,
-            font=dict(size=11,color="#334155"),bgcolor="rgba(255,255,255,.95)",bordercolor="#cbd5e1",borderwidth=1))
+        legend=dict(orientation="h",yanchor="bottom",y=1.02,xanchor="right",x=1,
+            font=dict(size=10,color="#334155"),bgcolor="rgba(255,255,255,.95)",bordercolor="#cbd5e1",borderwidth=1))
 
 def _xt(mx):
     v=[0]+list(range(12,mx+1,12));t=["M0"]+[f"Y{m//12}"for m in range(12,mx+1,12)]
