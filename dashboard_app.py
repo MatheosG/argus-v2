@@ -582,7 +582,15 @@ def render_levelized_det(df, r_monthly, nm):
             y=lev["running_lrrm"][mask] - lev["running_lcr"][mask],
             fill="tozeroy", fillcolor="rgba(5,150,105,0.1)",
             line=dict(color="#059669", width=1, dash="dash"), name="Margin"))
+        # Cap y-axis so convergence is visible
+        peak_lcr = float(np.nanmax(lev["running_lcr"]))
         fig.update_layout(**_layout("Levelized Cost vs Revenue (Cumulative)", "$/rig-month"))
+        fig.update_yaxes(range=[-50000, 50000])
+        if peak_lcr > 50000:
+            fig.add_annotation(x=lev["months"][mask][0], y=48000,
+                text=f"↑ LCR peaks at ${peak_lcr/1e3:,.0f}K in early months",
+                showarrow=False, font=dict(size=10, color="#DC2626"),
+                xanchor="left", yanchor="top")
         fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig, use_container_width=True, key="lev_run_d")
 
@@ -594,11 +602,10 @@ def render_levelized_det(df, r_monthly, nm):
         ["Depreciation", f"${lev['lcr_depr']:,.0f}", f"{lev['lcr_depr']/lev['lcr']*100:.1f}%"],
         ["G&A (Internet + Cloud)", f"${lev['lcr_ga']:,.0f}", f"{lev['lcr_ga']/lev['lcr']*100:.1f}%"],
         ["IT Services", f"${lev['lcr_it']:,.0f}", f"{lev['lcr_it']/lev['lcr']*100:.1f}%"],
-        ["**Total LCR**", f"**${lev['lcr']:,.0f}**", "**100%**"],
-        ["", "", ""],
-        ["Levelized Revenue / Rig-Month", f"${lev['lrrm']:,.0f}", ""],
-        ["**Levelized Margin / Rig-Month**", f"**${lev['lrrm']-lev['lcr']:,.0f}**",
-         f"**{(lev['lrrm']-lev['lcr'])/lev['lrrm']*100:.1f}% margin**" if lev['lrrm'] > 0 else ""],
+        ["TOTAL LCR", f"${lev['lcr']:,.0f}", "100%"],
+        ["Levelized Revenue (LRRM)", f"${lev['lrrm']:,.0f}", "—"],
+        ["LEVELIZED MARGIN", f"${lev['lrrm']-lev['lcr']:,.0f}",
+         f"{(lev['lrrm']-lev['lcr'])/lev['lrrm']*100:.1f}% margin" if lev['lrrm'] > 0 else "—"],
     ]
     st.dataframe(pd.DataFrame(bk, columns=["Component", "$/Rig-Month", "Share"]),
                  hide_index=True, use_container_width=True)
