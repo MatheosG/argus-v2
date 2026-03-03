@@ -638,6 +638,175 @@ def render_levelized_det(df, r_monthly, nm):
                  hide_index=True, use_container_width=True)
 
 
+
+
+# ─── Life Cycle Analysis (LCA) ─── 
+def compute_lca(df, config):
+    """Compute CO2 avoided and diesel saved from ARGUS fleet deployment."""
+    lca_cfg = config.get("lca", {})
+    # Defaults based on EPA / IPIECA / SPE literature
+    diesel_onshore = lca_cfg.get("diesel_gal_per_day_onshore", 2000)
+    diesel_offshore = lca_cfg.get("diesel_gal_per_day_offshore", 8450)
+    co2_per_gal = lca_cfg.get("co2_kg_per_gal", 10.18)  # EPA GHG Hub
+    npt_baseline_low = lca_cfg.get("npt_baseline_low", 0.20)
+    npt_baseline_high = lca_cfg.get("npt_baseline_high", 0.30)
+    npt_reduction = lca_cfg.get("argus_npt_reduction", 0.03)  # conservative 3%
+    car_co2_per_year_mt = lca_cfg.get("car_co2_per_year_mt", 4.6)  # EPA avg passenger vehicle
+
+    results = []
+    for _, row in df.iterrows():
+        m = int(row["month"])
+        bc = row.get("by_class", {})
+        if not isinstance(bc, dict):
+            bc = {}
+        
+        onshore_rigs = bc.get("onshore", {}).get("rigs", 0) if isinstance(bc.get("onshore"), dict) else 0
+        offshore_rigs = bc.get("offshore", {}).get("rigs", 0) if isinstance(bc.get("offshore"), dict) else 0
+        
+        # Days per month
+        dpm = 30
+        
+        # NPT-based rig-days saved per rig per month
+        npt_mid = (npt_baseline_low + npt_baseline_high) / 2
+        rig_days_saved_per_rig = dpm * npt_mid * npt_reduction  # e.g. 30 * 0.25 * 0.03 = 0.225 days/rig/month
+        
+        # Diesel saved
+        diesel_saved_onshore = onshore_rigs * rig_days_saved_per_rig * diesel_onshore
+        diesel_saved_offshore = offshore_rigs * rig_days_saved_per_rig * diesel_offshore
+        diesel_saved_total = diesel_saved_onshore + diesel_saved_offshore
+        
+        # CO2 avoided (metric tons)
+        co2_avoided_onshore = diesel_saved_onshore * co2_per_gal / 1000  # kg -> mt
+        co2_avoided_offshore = diesel_saved_offshore * co2_per_gal / 1000
+        co2_avoided_total = co2_avoided_onshore + co2_avoided_offshore
+        
+        results.append({
+            "month": m,
+            "onshore_rigs": onshore_rigs,
+            "offshore_rigs": offshore_rigs,
+            "diesel_saved_onshore": diesel_saved_onshore,
+            "diesel_saved_offshore": diesel_saved_offshore,
+            "diesel_saved_total": diesel_saved_total,
+            "co2_avoided_onshore": co2_avoided_onshore,
+            "co2_avoided_offshore": co2_avoided_offshore,
+            "co2_avoided_total": co2_avoided_total,
+        })
+    
+    lca_df = pd.DataFrame(results)
+    lca_df["cum_co2"] = lca_df["co2_avoided_total"].cumsum()
+    lca_df["cum_diesel"] = lca_df["diesel_saved_total"].cumsum()
+    lca_df["cars_equivalent"] = lca_df["cum_co2"] / (car_co2_per_year_mt * (lca_df["month"] / 12).clip(lower=1/12))
+    
+    return lca_df, {
+        "diesel_onshore": diesel_onshore, "diesel_offshore": diesel_offshore,
+        "co2_per_gal": co2_per_gal, "npt_baseline_low": npt_baseline_low,
+        "npt_baseline_high": npt_baseline_high, "npt_reduction": npt_reduction,
+        "car_co2_per_year_mt": car_co2_per_year_mt,
+    }
+
+
+def render_lca(df, config, nm):
+    """Render LCA section for deterministic mode."""
+    lca_df, params = compute_lca(df, config)
+    if lca_df.empty or lca_df["co2_avoided_total"].sum() == 0:
+        st.info("No rigs deployed — cannot compute environmental impact.")
+        return
+    
+    st.divider()
+    st.subheader("🌍 Life Cycle Analysis (LCA)")
+    st.caption("CO2 avoided through NPT reduction — fewer rig-days = less diesel burned (EPA emission factors)")
+
+    # KPI cards
+    total_co2 = lca_df["co2_avoided_total"].sum()
+    total_diesel = lca_df["diesel_saved_total"].sum()
+    final_row = lca_df.iloc[-1]
+    monthly_co2 = final_row["co2_avoided_total"]
+    annual_co2 = monthly_co2 * 12
+    cars_removed = total_co2 / (params["car_co2_per_year_mt"] * (nm / 12))
+    
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric(f"CO2 Avoided ({nm//12}yr)", f"{total_co2:,.0f} mt")
+    k2.metric("CO2 Avoided (current rate)", f"{annual_co2:,.0f} mt/yr")
+    k3.metric(f"Diesel Saved ({nm//12}yr)", f"{total_diesel/1e6:,.1f}M gal")
+    k4.metric("Cars Removed Equiv.", f"{cars_removed:,.0f}")
+
+    la, lb = st.columns(2)
+    with la:
+        # Monthly CO2 avoided by class (stacked bar)
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=lca_df["month"], y=lca_df["co2_avoided_onshore"],
+            name="Onshore", marker_color="#2563EB"))
+        fig.add_trace(go.Bar(x=lca_df["month"], y=lca_df["co2_avoided_offshore"],
+            name="Offshore", marker_color="#059669"))
+        fig.update_layout(**_layout("Monthly CO2 Avoided by Rig Class", "mt CO2"), barmode="stack")
+        fig.update_xaxes(**_xt(nm))
+        st.plotly_chart(fig, use_container_width=True, key="lca_monthly")
+    
+    with lb:
+        # Cumulative CO2 avoided
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=lca_df["month"], y=lca_df["cum_co2"],
+            fill="tozeroy", fillcolor="rgba(5,150,105,0.12)",
+            line=dict(color="#059669", width=2.5), name="Cumulative CO2 Avoided"))
+        fig.update_layout(**_layout("Cumulative CO2 Avoided", "mt CO2"))
+        fig.update_xaxes(**_xt(nm))
+        st.plotly_chart(fig, use_container_width=True, key="lca_cumulative")
+
+    la2, lb2 = st.columns(2)
+    with la2:
+        # Diesel saved by class (stacked bar)
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=lca_df["month"], y=lca_df["diesel_saved_onshore"],
+            name="Onshore", marker_color="#2563EB"))
+        fig.add_trace(go.Bar(x=lca_df["month"], y=lca_df["diesel_saved_offshore"],
+            name="Offshore", marker_color="#059669"))
+        fig.update_layout(**_layout("Monthly Diesel Saved by Rig Class", "gallons"), barmode="stack")
+        fig.update_xaxes(**_xt(nm))
+        st.plotly_chart(fig, use_container_width=True, key="lca_diesel_monthly")
+    
+    with lb2:
+        # Sensitivity: what if different NPT reductions?
+        npt_scenarios = [0.01, 0.03, 0.05, 0.10]
+        scenario_labels = ["1% (minimal)", "3% (conservative)", "5% (moderate)", "10% (aggressive)"]
+        scenario_co2 = []
+        for npt_r in npt_scenarios:
+            npt_mid = (params["npt_baseline_low"] + params["npt_baseline_high"]) / 2
+            dpm = 30
+            total = 0
+            for _, row in df.iterrows():
+                bc = row.get("by_class", {})
+                if not isinstance(bc, dict): bc = {}
+                on = bc.get("onshore", {}).get("rigs", 0) if isinstance(bc.get("onshore"), dict) else 0
+                off = bc.get("offshore", {}).get("rigs", 0) if isinstance(bc.get("offshore"), dict) else 0
+                days_saved = dpm * npt_mid * npt_r
+                diesel = on * days_saved * params["diesel_onshore"] + off * days_saved * params["diesel_offshore"]
+                total += diesel * params["co2_per_gal"] / 1000
+            scenario_co2.append(total)
+        
+        fig = go.Figure()
+        colors = ["#94A3B8", "#059669", "#2563EB", "#0D9488"]
+        fig.add_trace(go.Bar(x=scenario_labels, y=scenario_co2,
+            marker_color=colors,
+            text=[f"{v:,.0f} mt" for v in scenario_co2], textposition="outside"))
+        fig.update_layout(**_layout(f"CO2 Avoided by NPT Reduction Scenario ({nm//12}yr)", "mt CO2"),
+                          showlegend=False)
+        st.plotly_chart(fig, use_container_width=True, key="lca_sensitivity")
+
+    # Assumptions table
+    st.markdown("#### LCA Assumptions")
+    npt_mid = (params["npt_baseline_low"] + params["npt_baseline_high"]) / 2
+    at = [
+        ["Diesel consumption (onshore)", f"{params['diesel_onshore']:,} gal/day", "World Oil / Canrig (2023)"],
+        ["Diesel consumption (offshore)", f"{params['diesel_offshore']:,} gal/day", "IPIECA Drilling Rigs (2023)"],
+        ["CO2 emission factor", f"{params['co2_per_gal']} kg/gal", "EPA GHG Emission Factors Hub"],
+        ["Baseline NPT", f"{params['npt_baseline_low']:.0%} - {params['npt_baseline_high']:.0%}", "GA Drilling / SPE/IADC"],
+        ["ARGUS NPT reduction", f"{params['npt_reduction']:.0%} of total rig time", "Conservative estimate"],
+        ["Avg. passenger vehicle CO2", f"{params['car_co2_per_year_mt']} mt/yr", "EPA (2022)"],
+    ]
+    st.dataframe(pd.DataFrame(at, columns=["Parameter", "Value", "Source"]),
+                 hide_index=True, use_container_width=True)
+
+
 def render_tea_mc(dfm, mc_data, r_monthly_fallback, nm, band):
     """TEA section for Monte Carlo mode. Uses per-trial sampled discount rates."""
     bmap={"P5–P95":(5,95),"P10–P90":(10,90),"P25–P75":(25,75)};blo,bhi=bmap[band]
@@ -925,6 +1094,7 @@ if"Determ"in mode:
 
     st.divider()
     render_tea_det(df, disc_rate_monthly, nm)
+    render_lca(df, base, nm)
 
 # ─── MONTE CARLO ───
 elif"Monte"in mode:
@@ -980,6 +1150,22 @@ elif"Monte"in mode:
 
     st.divider()
     render_tea_mc(mc["dfm"], mc, disc_rate_monthly, nm, mc_b)
+    # LCA for Monte Carlo — use P50 rig counts from dfm
+    dfm = mc["dfm"]
+    months_list = sorted(dfm["month"].unique())
+    lca_rows = []
+    for m in months_list:
+        mdf = dfm[dfm["month"] == m]
+        row_dict = {"month": m, "rig_count": mdf["rigs"].median(),
+                    "by_class": {}}
+        for cn in mc["cnames"]:
+            row_dict["by_class"][cn] = {"rigs": mdf[f"rigs_{cn}"].median() if f"rigs_{cn}" in mdf.columns else 0}
+        # Add dummy columns needed by compute_lca
+        for col in ["total_revenue", "total_cogs", "total_compensation", "total_depreciation", "total_ga", "total_it"]:
+            row_dict[col] = mdf[col].median() if col in mdf.columns else 0
+        lca_rows.append(row_dict)
+    mc_lca_df = pd.DataFrame(lca_rows)
+    render_lca(mc_lca_df, base, nm)
 
 # ─── SENSITIVITY ───
 elif"Sensit"in mode:
@@ -1741,6 +1927,39 @@ negative spiral where fixed costs drain the cash pool and prevent any growth.
 - **Min Cash Pool** = lowest cash balance during the simulation. If deeply negative, the company would have been insolvent without additional funding
 - **Investment Efficiency Curve** = shows diminishing returns: the first dollar past the minimum viable threshold has enormous impact, additional capital above that adds safety but lower per-dollar returns
 - **The Cliff** = the sharp transition in the comparison table from "Never breaks even" to "Highly profitable." This is the minimum viable investment — the amount needed to survive until the fleet becomes self-funding
+""")
+
+    st.divider()
+
+    # ────────────────────────────────
+    # 8.5 LCA METHODOLOGY
+    # ────────────────────────────────
+    st.subheader("🌍 Life Cycle Analysis (LCA) Methodology")
+    lca_cfg = base.get("lca", {})
+    st.markdown(f"""
+ARGUS enables operational efficiency on drilling rigs, which translates to measurable environmental benefits through reduced diesel consumption.
+
+**Logic chain:** Real-time monitoring → reduced non-productive time (NPT) → fewer rig-days per well → less diesel burned → CO2 avoided
+
+**Calculation:**
+```
+CO2_avoided = Rigs × Days/month × NPT_rate × ARGUS_reduction × Diesel/day × EF
+```
+
+Where:
+- **NPT rate**: {lca_cfg.get('npt_baseline_low', 0.20):.0%}–{lca_cfg.get('npt_baseline_high', 0.30):.0%} of total drilling time (industry average, GA Drilling / SPE/IADC)
+- **ARGUS NPT reduction**: {lca_cfg.get('argus_npt_reduction', 0.03):.0%} of total rig time (conservative estimate)
+- **Diesel consumption**: {lca_cfg.get('diesel_gal_per_day_onshore', 2000):,} gal/day onshore (World Oil/Canrig 2023), {lca_cfg.get('diesel_gal_per_day_offshore', 8450):,} gal/day offshore (IPIECA 2023)
+- **Emission factor**: {lca_cfg.get('co2_kg_per_gal', 10.18)} kg CO2/gal diesel (EPA GHG Emission Factors Hub, IPCC 2006)
+- **Car equivalent**: {lca_cfg.get('car_co2_per_year_mt', 4.6)} mt CO2/yr per average US passenger vehicle (EPA 2022)
+
+**Additional impact channels not quantified:**
+- Avoided rig mobilizations (trucking/vessel operations)
+- Predictive maintenance reducing blowouts, spills, equipment failures
+- Reduced water and chemical usage from fewer total well-days
+- 50% of Gulf of Mexico loss-of-well-control events are preventable with better detection (BSEE)
+
+All LCA parameters are configurable in `config.yaml` under the `lca:` section.
 """)
 
     st.divider()
