@@ -554,45 +554,72 @@ def render_levelized_det(df, r_monthly, nm):
     la, lb = st.columns(2)
 
     with la:
-        # Cost breakdown waterfall
-        cats = ["Compensation", "COGS", "Depreciation", "G&A", "IT", "Total LCR"]
-        vals = [lev["lcr_comp"], lev["lcr_cogs"], lev["lcr_depr"], lev["lcr_ga"], lev["lcr_it"], 0]
-        fig = go.Figure(go.Waterfall(
+        # Cost breakdown waterfall with LRRM comparison bar
+        margin = lev["lrrm"] - lev["lcr"]
+        fig = go.Figure()
+        fig.add_trace(go.Waterfall(
             orientation="v",
-            measure=["absolute"] + ["relative"] * 4 + ["total"],
-            x=cats, y=vals,
+            measure=["absolute", "relative", "relative", "relative", "relative", "total"],
+            x=["Compensation", "COGS", "Depreciation", "G&A", "IT", "Total LCR"],
+            y=[lev["lcr_comp"], lev["lcr_cogs"], lev["lcr_depr"], lev["lcr_ga"], lev["lcr_it"], 0],
             connector=dict(line=dict(color="#94a3b8", width=1, dash="dot")),
             increasing=dict(marker=dict(color="#DC2626")),
             totals=dict(marker=dict(color="#0f172a")),
             textposition="outside",
-            text=[f"${v:,.0f}" for v in vals[:-1]] + [f"${lev['lcr']:,.0f}"],
+            text=[f"${lev['lcr_comp']:,.0f}", f"${lev['lcr_cogs']:,.0f}", f"${lev['lcr_depr']:,.0f}",
+                  f"${lev['lcr_ga']:,.0f}", f"${lev['lcr_it']:,.0f}", f"${lev['lcr']:,.0f}"],
+            showlegend=False,
         ))
-        fig.update_layout(**_layout("LCR Breakdown ($/rig-month)", "$/rig-month"), showlegend=False)
+        fig.add_trace(go.Bar(x=["LRRM"], y=[lev["lrrm"]], marker_color="#2563EB",
+            text=[f"${lev['lrrm']:,.0f}"], textposition="outside", showlegend=False))
+        fig.add_trace(go.Bar(x=["Margin"], y=[margin],
+            marker_color="#059669" if margin > 0 else "#DC2626",
+            text=[f"${margin:,.0f}"], textposition="outside", showlegend=False))
+        fig.update_layout(**_layout("LCR vs LRRM ($/rig-month)", "$/rig-month"), showlegend=False)
         st.plotly_chart(fig, use_container_width=True, key="lev_wf_d")
 
     with lb:
-        # Running LCR vs LRRM over time
         fig = go.Figure()
         mask = ~np.isnan(lev["running_lcr"])
-        fig.add_trace(go.Scatter(x=lev["months"][mask], y=lev["running_lcr"][mask],
+        ms = lev["months"][mask]
+        lcr_vals = lev["running_lcr"][mask]
+        lrrm_vals = lev["running_lrrm"][mask]
+        margin_vals = lrrm_vals - lcr_vals
+        crossover = None
+        for i in range(1, len(margin_vals)):
+            if margin_vals[i-1] < 0 and margin_vals[i] >= 0:
+                crossover = float(ms[i]); break
+        fig.add_trace(go.Scatter(x=ms, y=lcr_vals,
             line=dict(color="#DC2626", width=2.5), name="LCR (cost)"))
-        fig.add_trace(go.Scatter(x=lev["months"][mask], y=lev["running_lrrm"][mask],
+        fig.add_trace(go.Scatter(x=ms, y=lrrm_vals,
             line=dict(color="#2563EB", width=2.5), name="LRRM (revenue)"))
-        fig.add_trace(go.Scatter(x=lev["months"][mask],
-            y=lev["running_lrrm"][mask] - lev["running_lcr"][mask],
+        fig.add_trace(go.Scatter(x=ms, y=margin_vals,
             fill="tozeroy", fillcolor="rgba(5,150,105,0.1)",
             line=dict(color="#059669", width=1, dash="dash"), name="Margin"))
-        # Cap y-axis so convergence is visible
-        peak_lcr = float(np.nanmax(lev["running_lcr"]))
-        fig.update_layout(**_layout("Levelized Cost vs Revenue (Cumulative)", "$/rig-month"))
+        peak_lcr = float(np.nanmax(lcr_vals))
+        fig.update_layout(**_layout("Unit Economics Converge as Fleet Grows", "$/rig-month"))
         fig.update_yaxes(range=[-50000, 50000])
         if peak_lcr > 50000:
-            fig.add_annotation(x=lev["months"][mask][0], y=48000,
+            fig.add_annotation(x=ms[0], y=48000,
                 text=f"↑ LCR peaks at ${peak_lcr/1e3:,.0f}K in early months",
                 showarrow=False, font=dict(size=10, color="#DC2626"),
                 xanchor="left", yanchor="top")
+        if crossover:
+            fig.add_vline(x=crossover, line_dash="dash", line_color="#059669", line_width=1.5)
+            fig.add_annotation(x=crossover, y=-45000,
+                text=f"Crossover: Month {int(crossover)} ({crossover/12:.1f} yr)",
+                showarrow=False, font=dict(size=10, color="#059669"),
+                xanchor="left", yanchor="bottom")
+        fig.add_annotation(x=ms[-1], y=lcr_vals[-1],
+            text=f"LCR: ${lcr_vals[-1]:,.0f}", showarrow=True, arrowhead=2,
+            arrowcolor="#DC2626", font=dict(size=10, color="#DC2626"), ax=40, ay=-20)
+        fig.add_annotation(x=ms[-1], y=lrrm_vals[-1],
+            text=f"LRRM: ${lrrm_vals[-1]:,.0f}", showarrow=True, arrowhead=2,
+            arrowcolor="#2563EB", font=dict(size=10, color="#2563EB"), ax=40, ay=20)
         fig.update_xaxes(**_xt(nm))
+        fig.add_hline(y=0, line_color="#94a3b8", line_width=1, line_dash="dot")
         st.plotly_chart(fig, use_container_width=True, key="lev_run_d")
+
 
     # Detailed breakdown table
     st.markdown("#### Levelized Cost Breakdown")
