@@ -642,97 +642,118 @@ def render_levelized_det(df, r_monthly, nm):
 
 # ─── Life Cycle Analysis (LCA) ─── 
 def compute_lca(df, config):
-    """Compute CO2 avoided and diesel saved from ARGUS fleet deployment."""
+    """Compute CO2 avoided and diesel saved from ARGUS fleet deployment.
+    
+    Formula per rig-year:
+      diesel_saved = NPT_reduction × diesel_gal/day × 365 × utilization_rate
+      co2_avoided  = diesel_saved × emission_factor / 1000
+    """
     lca_cfg = config.get("lca", {})
-    # Defaults based on EPA / IPIECA / SPE literature
     diesel_onshore = lca_cfg.get("diesel_gal_per_day_onshore", 2000)
     diesel_offshore = lca_cfg.get("diesel_gal_per_day_offshore", 8450)
-    co2_per_gal = lca_cfg.get("co2_kg_per_gal", 10.18)  # EPA GHG Hub
-    npt_baseline_low = lca_cfg.get("npt_baseline_low", 0.20)
-    npt_baseline_high = lca_cfg.get("npt_baseline_high", 0.30)
-    npt_reduction = lca_cfg.get("argus_npt_reduction", 0.03)  # conservative 3%
-    car_co2_per_year_mt = lca_cfg.get("car_co2_per_year_mt", 4.6)  # EPA avg passenger vehicle
+    co2_per_gal = lca_cfg.get("co2_kg_per_gal", 10.18)
+    npt_reduction = lca_cfg.get("argus_npt_reduction", 0.03)
+    car_co2_per_year_mt = lca_cfg.get("car_co2_per_year_mt", 4.6)
+    home_co2_per_year_mt = lca_cfg.get("home_co2_per_year_mt", 7.94)  # EPA avg US home
 
+    # Pull utilization rates from rig class config (deterministic mode values)
+    rc = config.get("rig_classes", {})
+    def _get_util(cls_name):
+        cls = rc.get(cls_name, {})
+        ur = cls.get("market", {}).get("utilization_rate", 0.44)
+        if isinstance(ur, dict):
+            return ur.get("params", {}).get("mode", 0.44)
+        return float(ur)
+    util_onshore = _get_util("onshore")
+    util_offshore = _get_util("offshore")
+
+    # Per rig-year metrics (for KPI display)
+    diesel_per_rig_yr_onshore = npt_reduction * diesel_onshore * 365 * util_onshore
+    diesel_per_rig_yr_offshore = npt_reduction * diesel_offshore * 365 * util_offshore
+    co2_per_rig_yr_onshore = diesel_per_rig_yr_onshore * co2_per_gal / 1000
+    co2_per_rig_yr_offshore = diesel_per_rig_yr_offshore * co2_per_gal / 1000
+
+    # Monthly time series
     results = []
     for _, row in df.iterrows():
         m = int(row["month"])
         bc = row.get("by_class", {})
-        if not isinstance(bc, dict):
-            bc = {}
-        
-        onshore_rigs = bc.get("onshore", {}).get("rigs", 0) if isinstance(bc.get("onshore"), dict) else 0
-        offshore_rigs = bc.get("offshore", {}).get("rigs", 0) if isinstance(bc.get("offshore"), dict) else 0
-        
-        # Days per month
-        dpm = 30
-        
-        # NPT-based rig-days saved per rig per month
-        npt_mid = (npt_baseline_low + npt_baseline_high) / 2
-        rig_days_saved_per_rig = dpm * npt_mid * npt_reduction  # e.g. 30 * 0.25 * 0.03 = 0.225 days/rig/month
-        
-        # Diesel saved
-        diesel_saved_onshore = onshore_rigs * rig_days_saved_per_rig * diesel_onshore
-        diesel_saved_offshore = offshore_rigs * rig_days_saved_per_rig * diesel_offshore
-        diesel_saved_total = diesel_saved_onshore + diesel_saved_offshore
-        
-        # CO2 avoided (metric tons)
-        co2_avoided_onshore = diesel_saved_onshore * co2_per_gal / 1000  # kg -> mt
-        co2_avoided_offshore = diesel_saved_offshore * co2_per_gal / 1000
-        co2_avoided_total = co2_avoided_onshore + co2_avoided_offshore
-        
+        if not isinstance(bc, dict): bc = {}
+        on = bc.get("onshore", {}).get("rigs", 0) if isinstance(bc.get("onshore"), dict) else 0
+        off = bc.get("offshore", {}).get("rigs", 0) if isinstance(bc.get("offshore"), dict) else 0
+
+        # Monthly = annual / 12
+        d_on = on * diesel_per_rig_yr_onshore / 12
+        d_off = off * diesel_per_rig_yr_offshore / 12
+        co2_on = on * co2_per_rig_yr_onshore / 12
+        co2_off = off * co2_per_rig_yr_offshore / 12
+
         results.append({
-            "month": m,
-            "onshore_rigs": onshore_rigs,
-            "offshore_rigs": offshore_rigs,
-            "diesel_saved_onshore": diesel_saved_onshore,
-            "diesel_saved_offshore": diesel_saved_offshore,
-            "diesel_saved_total": diesel_saved_total,
-            "co2_avoided_onshore": co2_avoided_onshore,
-            "co2_avoided_offshore": co2_avoided_offshore,
-            "co2_avoided_total": co2_avoided_total,
+            "month": m, "onshore_rigs": on, "offshore_rigs": off,
+            "diesel_saved_onshore": d_on, "diesel_saved_offshore": d_off,
+            "diesel_saved_total": d_on + d_off,
+            "co2_avoided_onshore": co2_on, "co2_avoided_offshore": co2_off,
+            "co2_avoided_total": co2_on + co2_off,
         })
-    
+
     lca_df = pd.DataFrame(results)
     lca_df["cum_co2"] = lca_df["co2_avoided_total"].cumsum()
     lca_df["cum_diesel"] = lca_df["diesel_saved_total"].cumsum()
-    lca_df["cars_equivalent"] = lca_df["cum_co2"] / (car_co2_per_year_mt * (lca_df["month"] / 12).clip(lower=1/12))
-    
-    return lca_df, {
+
+    params = {
         "diesel_onshore": diesel_onshore, "diesel_offshore": diesel_offshore,
-        "co2_per_gal": co2_per_gal, "npt_baseline_low": npt_baseline_low,
-        "npt_baseline_high": npt_baseline_high, "npt_reduction": npt_reduction,
-        "car_co2_per_year_mt": car_co2_per_year_mt,
+        "co2_per_gal": co2_per_gal, "npt_reduction": npt_reduction,
+        "car_co2_per_year_mt": car_co2_per_year_mt, "home_co2_per_year_mt": home_co2_per_year_mt,
+        "util_onshore": util_onshore, "util_offshore": util_offshore,
+        "diesel_per_rig_yr_onshore": diesel_per_rig_yr_onshore,
+        "diesel_per_rig_yr_offshore": diesel_per_rig_yr_offshore,
+        "co2_per_rig_yr_onshore": co2_per_rig_yr_onshore,
+        "co2_per_rig_yr_offshore": co2_per_rig_yr_offshore,
     }
+    return lca_df, params
 
 
 def render_lca(df, config, nm):
-    """Render LCA section for deterministic mode."""
-    lca_df, params = compute_lca(df, config)
+    """Render LCA section matching slide layout."""
+    lca_df, p = compute_lca(df, config)
     if lca_df.empty or lca_df["co2_avoided_total"].sum() == 0:
         st.info("No rigs deployed — cannot compute environmental impact.")
         return
-    
+
     st.divider()
     st.subheader("🌍 Life Cycle Analysis (LCA)")
     st.caption("CO2 avoided through NPT reduction — fewer rig-days = less diesel burned (EPA emission factors)")
 
-    # KPI cards
+    # ── Per Rig-Year KPIs (Slide 1 style) ──
+    st.markdown("#### Quantified Impact per Rig-Year")
+    # Use weighted average based on fleet mix at end of projection
+    final = lca_df.iloc[-1]
+    total_rigs = final["onshore_rigs"] + final["offshore_rigs"]
+    if total_rigs > 0:
+        w_on = final["onshore_rigs"] / total_rigs
+        w_off = final["offshore_rigs"] / total_rigs
+    else:
+        w_on, w_off = 0.5, 0.5
+
+    diesel_per_rig_yr = w_on * p["diesel_per_rig_yr_onshore"] + w_off * p["diesel_per_rig_yr_offshore"]
+    co2_per_rig_yr = w_on * p["co2_per_rig_yr_onshore"] + w_off * p["co2_per_rig_yr_offshore"]
     total_co2 = lca_df["co2_avoided_total"].sum()
     total_diesel = lca_df["diesel_saved_total"].sum()
-    final_row = lca_df.iloc[-1]
-    monthly_co2 = final_row["co2_avoided_total"]
-    annual_co2 = monthly_co2 * 12
-    cars_removed = total_co2 / (params["car_co2_per_year_mt"] * (nm / 12))
-    
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric(f"CO2 Avoided ({nm//12}yr)", f"{total_co2:,.0f} mt")
-    k2.metric("CO2 Avoided (current rate)", f"{annual_co2:,.0f} mt/yr")
-    k3.metric(f"Diesel Saved ({nm//12}yr)", f"{total_diesel/1e6:,.1f}M gal")
-    k4.metric("Cars Removed Equiv.", f"{cars_removed:,.0f}")
+    cars_per_rig_yr = co2_per_rig_yr / p["car_co2_per_year_mt"]
 
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Diesel Saved / Rig-Year", f"{diesel_per_rig_yr:,.0f} gal")
+    k1.caption(f"{p['npt_reduction']:.0%} NPT × {p['diesel_offshore']:,} gal/day × 365 × {p['util_offshore']:.0%} util (offshore-weighted)")
+    k2.metric("CO₂ Avoided / Rig-Year", f"{co2_per_rig_yr:,.1f} mt")
+    k2.caption(f"{diesel_per_rig_yr:,.0f} gal × {p['co2_per_gal']} kg CO₂/gal (EPA)")
+    k3.metric(f"tCO₂ Full Fleet ({nm//12}yr)", f"{total_co2:,.0f}")
+    k3.caption(f"{total_rigs:.0f} rigs × {co2_per_rig_yr:,.1f} tCO₂/rig-yr")
+    k4.metric("Cars Off Road / Rig-Year", f"{cars_per_rig_yr:,.0f}")
+    k4.caption(f"EPA: {p['car_co2_per_year_mt']} tCO₂/car/yr")
+
+    # ── Charts (2×2) ──
     la, lb = st.columns(2)
     with la:
-        # Monthly CO2 avoided by class (stacked bar)
         fig = go.Figure()
         fig.add_trace(go.Bar(x=lca_df["month"], y=lca_df["co2_avoided_onshore"],
             name="Onshore", marker_color="#2563EB"))
@@ -741,9 +762,8 @@ def render_lca(df, config, nm):
         fig.update_layout(**_layout("Monthly CO2 Avoided by Rig Class", "mt CO2"), barmode="stack")
         fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig, use_container_width=True, key="lca_monthly")
-    
+
     with lb:
-        # Cumulative CO2 avoided
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=lca_df["month"], y=lca_df["cum_co2"],
             fill="tozeroy", fillcolor="rgba(5,150,105,0.12)",
@@ -754,7 +774,6 @@ def render_lca(df, config, nm):
 
     la2, lb2 = st.columns(2)
     with la2:
-        # Diesel saved by class (stacked bar)
         fig = go.Figure()
         fig.add_trace(go.Bar(x=lca_df["month"], y=lca_df["diesel_saved_onshore"],
             name="Onshore", marker_color="#2563EB"))
@@ -763,26 +782,24 @@ def render_lca(df, config, nm):
         fig.update_layout(**_layout("Monthly Diesel Saved by Rig Class", "gallons"), barmode="stack")
         fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig, use_container_width=True, key="lca_diesel_monthly")
-    
+
     with lb2:
-        # Sensitivity: what if different NPT reductions?
+        # Sensitivity: NPT reduction scenarios (10yr cumulative)
         npt_scenarios = [0.01, 0.03, 0.05, 0.10]
         scenario_labels = ["1% (minimal)", "3% (conservative)", "5% (moderate)", "10% (aggressive)"]
         scenario_co2 = []
         for npt_r in npt_scenarios:
-            npt_mid = (params["npt_baseline_low"] + params["npt_baseline_high"]) / 2
-            dpm = 30
             total = 0
             for _, row in df.iterrows():
                 bc = row.get("by_class", {})
                 if not isinstance(bc, dict): bc = {}
                 on = bc.get("onshore", {}).get("rigs", 0) if isinstance(bc.get("onshore"), dict) else 0
                 off = bc.get("offshore", {}).get("rigs", 0) if isinstance(bc.get("offshore"), dict) else 0
-                days_saved = dpm * npt_mid * npt_r
-                diesel = on * days_saved * params["diesel_onshore"] + off * days_saved * params["diesel_offshore"]
-                total += diesel * params["co2_per_gal"] / 1000
+                d_on = on * npt_r * p["diesel_onshore"] * 365 * p["util_onshore"] / 12
+                d_off = off * npt_r * p["diesel_offshore"] * 365 * p["util_offshore"] / 12
+                total += (d_on + d_off) * p["co2_per_gal"] / 1000
             scenario_co2.append(total)
-        
+
         fig = go.Figure()
         colors = ["#94A3B8", "#059669", "#2563EB", "#0D9488"]
         fig.add_trace(go.Bar(x=scenario_labels, y=scenario_co2,
@@ -792,16 +809,27 @@ def render_lca(df, config, nm):
                           showlegend=False)
         st.plotly_chart(fig, use_container_width=True, key="lca_sensitivity")
 
-    # Assumptions table
+    # ── Real-World Equivalencies (Slide 2 style) ──
+    st.markdown("#### Real-World Equivalencies")
+    eq_rows = []
+    for label, npt_r, co2_total in zip(scenario_labels, npt_scenarios, scenario_co2):
+        car_yrs = co2_total / p["car_co2_per_year_mt"]
+        homes_yr = co2_total / (p["home_co2_per_year_mt"] * (nm / 12))
+        eq_rows.append([label, f"{co2_total:,.0f} mt", f"~{car_yrs:,.0f} car-years", f"~{homes_yr:,.0f} homes/yr"])
+    st.dataframe(pd.DataFrame(eq_rows, columns=["Scenario", "Total CO2 Avoided", "Car-Years Equiv.", "Homes/Year Equiv."]),
+                 hide_index=True, use_container_width=True)
+
+    # ── Assumptions table ──
     st.markdown("#### LCA Assumptions")
-    npt_mid = (params["npt_baseline_low"] + params["npt_baseline_high"]) / 2
     at = [
-        ["Diesel consumption (onshore)", f"{params['diesel_onshore']:,} gal/day", "World Oil / Canrig (2023)"],
-        ["Diesel consumption (offshore)", f"{params['diesel_offshore']:,} gal/day", "IPIECA Drilling Rigs (2023)"],
-        ["CO2 emission factor", f"{params['co2_per_gal']} kg/gal", "EPA GHG Emission Factors Hub"],
-        ["Baseline NPT", f"{params['npt_baseline_low']:.0%} - {params['npt_baseline_high']:.0%}", "GA Drilling / SPE/IADC"],
-        ["ARGUS NPT reduction", f"{params['npt_reduction']:.0%} of total rig time", "Conservative estimate"],
-        ["Avg. passenger vehicle CO2", f"{params['car_co2_per_year_mt']} mt/yr", "EPA (2022)"],
+        ["Diesel (onshore)", f"{p['diesel_onshore']:,} gal/day", "World Oil / Canrig (2023)"],
+        ["Diesel (offshore)", f"{p['diesel_offshore']:,} gal/day", "IPIECA Drilling Rigs (2023)"],
+        ["Utilization (onshore)", f"{p['util_onshore']:.0%}", f"Config (mode)"],
+        ["Utilization (offshore)", f"{p['util_offshore']:.0%}", f"Config (mode)"],
+        ["CO2 emission factor", f"{p['co2_per_gal']} kg/gal", "EPA GHG Emission Factors Hub (IPCC 2006)"],
+        ["ARGUS NPT reduction", f"{p['npt_reduction']:.0%} of total rig time", "Conservative estimate"],
+        ["Avg. passenger vehicle", f"{p['car_co2_per_year_mt']} mt CO2/yr", "EPA (2022)"],
+        ["Avg. US home", f"{p['home_co2_per_year_mt']} mt CO2/yr", "EPA (2022)"],
     ]
     st.dataframe(pd.DataFrame(at, columns=["Parameter", "Value", "Source"]),
                  hide_index=True, use_container_width=True)
@@ -1941,14 +1969,15 @@ ARGUS enables operational efficiency on drilling rigs, which translates to measu
 
 **Logic chain:** Real-time monitoring → reduced non-productive time (NPT) → fewer rig-days per well → less diesel burned → CO2 avoided
 
-**Calculation:**
+**Calculation per rig-year:**
 ```
-CO2_avoided = Rigs × Days/month × NPT_rate × ARGUS_reduction × Diesel/day × EF
+diesel_saved = NPT_reduction × diesel_gal/day × 365 × utilization_rate
+CO2_avoided  = diesel_saved × emission_factor / 1000
 ```
 
 Where:
-- **NPT rate**: {lca_cfg.get('npt_baseline_low', 0.20):.0%}–{lca_cfg.get('npt_baseline_high', 0.30):.0%} of total drilling time (industry average, GA Drilling / SPE/IADC)
 - **ARGUS NPT reduction**: {lca_cfg.get('argus_npt_reduction', 0.03):.0%} of total rig time (conservative estimate)
+- **Utilization rate**: pulled from rig class config (onshore/offshore mode values)
 - **Diesel consumption**: {lca_cfg.get('diesel_gal_per_day_onshore', 2000):,} gal/day onshore (World Oil/Canrig 2023), {lca_cfg.get('diesel_gal_per_day_offshore', 8450):,} gal/day offshore (IPIECA 2023)
 - **Emission factor**: {lca_cfg.get('co2_kg_per_gal', 10.18)} kg CO2/gal diesel (EPA GHG Emission Factors Hub, IPCC 2006)
 - **Car equivalent**: {lca_cfg.get('car_co2_per_year_mt', 4.6)} mt CO2/yr per average US passenger vehicle (EPA 2022)

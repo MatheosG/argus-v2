@@ -1,5 +1,5 @@
 # ============================================================
-# ARGUS — Configuration
+# ARGUS v2 — Configuration
 # ============================================================
 
 simulation:
@@ -27,6 +27,16 @@ economics:
   discount_rate:
     distribution: triangular
     params: { low: 0.08, mode: 0.10, high: 0.15 }
+
+# --- Life Cycle Analysis (LCA) ---
+# Environmental impact via NPT reduction → diesel savings → CO2 avoided
+lca:
+  diesel_gal_per_day_onshore: 2000     # World Oil / Canrig (2023)
+  diesel_gal_per_day_offshore: 8450    # IPIECA Drilling Rigs (2023) — anchored semi avg
+  co2_kg_per_gal: 10.18               # EPA GHG Emission Factors Hub (IPCC 2006)
+  argus_npt_reduction: 0.03           # conservative 3% of total rig time
+  car_co2_per_year_mt: 4.6            # EPA avg passenger vehicle (2022)
+  home_co2_per_year_mt: 7.94           # EPA avg US home (electricity + gas)
 
 # ============================================================
 # Rig Classes — each has its own market params, timeline, revenue
