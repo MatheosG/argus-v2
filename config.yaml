@@ -3,7 +3,7 @@
 # ============================================================
 
 simulation:
-  n_trials: 5000
+  n_trials: 1000
   months: 120        # 10-year projection
   seed: 42
 
@@ -48,17 +48,17 @@ rig_classes:
       first_rig_month: 7
     revenue:
       days_per_month: 30
-      installation_fee: 20000
+      installation_fee: 10000
     market:
       total_rigs_added:
         distribution: triangular
-        params: { low: 5, mode: 8, high: 10 }
+        params: { low: 700, mode: 1100, high: 1500}
       rigs_lost_per_year:
         distribution: triangular
         params: { low: 0, mode: 1, high: 3 }
       daily_rate:
         distribution: triangular
-        params: { low: 150, mode: 200, high: 280 }
+        params: { low: 400, mode: 450, high: 500 }
       utilization_rate:
         distribution: triangular
         params: { low: 0.27, mode: 0.44, high: 0.67 }
@@ -68,17 +68,17 @@ rig_classes:
       first_rig_month: 18
     revenue:
       days_per_month: 30
-      installation_fee: 10000
+      installation_fee: 20000
     market:
       total_rigs_added:
         distribution: triangular
-        params: { low: 51, mode: 220, high: 360 }
+        params: { low: 16, mode: 21, high: 25 }
       rigs_lost_per_year:
         distribution: triangular
         params: { low: 0, mode: 1, high: 3 }
       daily_rate:
         distribution: triangular
-        params: { low: 300, mode: 500, high: 800 }
+        params: { low: 1500, mode: 2000, high: 2500 }
       utilization_rate:
         distribution: triangular
-        params: { low: 0.27, mode: 0.44, high: 0.67 }
+        params: { low: 0.80, mode: 0.88, high: 0.95 }
