@@ -26,7 +26,7 @@ economics:
   # Annual discount rate for NPV / DCF calculations
   discount_rate:
     distribution: triangular
-    params: { low: 0.08, mode: 0.10, high: 0.15 }
+    params: { low: 0.20, mode: 0.30, high: 0.40 }
 
 # --- Life Cycle Analysis (LCA) ---
 # Environmental impact via NPT reduction → diesel savings → CO2 avoided
