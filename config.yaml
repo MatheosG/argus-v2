@@ -72,7 +72,7 @@ rig_classes:
     market:
       total_rigs_added:
         distribution: triangular
-        params: { low: 16, mode: 21, high: 25 }
+        params: { low: 16, mode: 21, high: 60 }
       rigs_lost_per_year:
         distribution: triangular
         params: { low: 0, mode: 1, high: 3 }
