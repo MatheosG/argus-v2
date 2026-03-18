@@ -167,24 +167,42 @@ def pnl_html(df, class_names):
 
 # ═══ Charts ═══
 def _layout(title,yt):
-    return dict(title=dict(text=title,font=dict(size=14,color="#1e293b"),x=0.01,xanchor="left",y=0.95,yanchor="top",pad=dict(b=10)),
-        font=dict(family="IBM Plex Sans",size=12,color="#334155"),
-        plot_bgcolor="#fff",paper_bgcolor="#fff",margin=dict(l=60,r=20,t=90,b=50),
-        xaxis=dict(showgrid=False,linecolor="#1e293b",linewidth=1.5,tickfont=dict(color="#475569",size=11)),
-        yaxis=dict(title=yt,gridcolor="#e2e8f0",gridwidth=.5,linecolor="#1e293b",linewidth=1.5,
-            zeroline=True,zerolinecolor="#94a3b8",zerolinewidth=1,tickfont=dict(color="#475569",size=11)),
-        legend=dict(orientation="h",yanchor="bottom",y=1.02,xanchor="right",x=1,
-            font=dict(size=10,color="#334155"),bgcolor="rgba(255,255,255,.95)",bordercolor="#cbd5e1",borderwidth=1))
+    return dict(
+        title=dict(text=f"<b>{title}</b>",font=dict(size=20,color="#0f172a",family="IBM Plex Sans"),
+            x=0.01,xanchor="left",y=0.95,yanchor="top",pad=dict(b=12)),
+        font=dict(family="IBM Plex Sans",size=14,color="#1e293b"),
+        plot_bgcolor="#fff",paper_bgcolor="#fff",margin=dict(l=70,r=30,t=100,b=60),
+        xaxis=dict(
+            showgrid=True,gridcolor="rgba(148,163,184,0.25)",gridwidth=0.5,griddash="dot",
+            showline=True,linecolor="#0f172a",linewidth=2,
+            showticklabels=True,tickfont=dict(color="#1e293b",size=13,family="IBM Plex Sans"),
+            ticks="outside",ticklen=6,tickwidth=1.5,tickcolor="#0f172a",
+            showspikes=False,
+        ),
+        yaxis=dict(
+            title=dict(text=yt,font=dict(size=14,color="#475569",family="IBM Plex Sans"),standoff=10),
+            showgrid=True,gridcolor="rgba(148,163,184,0.35)",gridwidth=0.8,
+            showline=True,linecolor="#0f172a",linewidth=2,
+            zeroline=True,zerolinecolor="#64748b",zerolinewidth=1.5,
+            showticklabels=True,tickfont=dict(color="#1e293b",size=13,family="IBM Plex Sans"),
+            ticks="outside",ticklen=6,tickwidth=1.5,tickcolor="#0f172a",
+        ),
+        legend=dict(orientation="h",yanchor="bottom",y=1.03,xanchor="right",x=1,
+            font=dict(size=13,color="#1e293b",family="IBM Plex Sans"),
+            bgcolor="rgba(255,255,255,0.97)",bordercolor="#94a3b8",borderwidth=1,
+            itemsizing="constant"),
+        hoverlabel=dict(font_size=13,font_family="IBM Plex Sans"),
+    )
 
 def _xt(mx):
     v=[0]+list(range(12,mx+1,12));t=["M0"]+[f"Y{m//12}"for m in range(12,mx+1,12)]
-    return dict(tickvals=v,ticktext=t)
+    return dict(tickvals=v,ticktext=t,tickfont=dict(size=13,color="#1e293b"))
 
 def _fan(bd,lo,mid,hi,title,yt):
     fig=go.Figure();m=bd["month"]
     fig.add_trace(go.Scatter(x=m,y=bd[hi],line=dict(width=0),showlegend=False,hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=m,y=bd[lo],fill="tonexty",line=dict(width=0),fillcolor="rgba(59,130,246,.18)",name=f"{lo.upper()}–{hi.upper()}",hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=m,y=bd[mid],line=dict(color="#2563eb",width=3),name=f"{mid.upper()} (median)"))
+    fig.add_trace(go.Scatter(x=m,y=bd[lo],fill="tonexty",line=dict(width=0),fillcolor="rgba(37,99,235,.15)",name=f"{lo.upper()}–{hi.upper()}",hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=m,y=bd[mid],line=dict(color="#1e3a5f",width=3.5),name=f"{mid.upper()} (median)"))
     fig.update_layout(**_layout(title,yt));fig.update_xaxes(**_xt(int(m.max())));return fig
 
 def _pband(dt,col,ps=(5,25,50,75,95)):
@@ -405,18 +423,18 @@ def render_tea_det(df, r_monthly, nm):
     la, lb = st.columns(2)
     with la:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=tea["months"],y=tea["cum_dcf"],fill="tozeroy",
-            fillcolor="rgba(37,99,235,.12)",line=dict(color="#1e293b",width=2.5),name="Cum DCF"))
+        fig.add_trace(go.Scatter(x=tea["months"],y=tea["cum_dcf"],
+            line=dict(color="#1e293b",width=3),name="Cum DCF",mode="lines"))
         mi = int(np.argmin(tea["cum_dcf"]))
         fig.add_trace(go.Scatter(x=[tea["months"][mi]],y=[tea["mfe"]],mode="markers+text",
-            marker=dict(size=12,color="#DC2626",symbol="circle"),
+            marker=dict(size=14,color="#DC2626",symbol="circle"),
             text=[f"MFE: {money(tea['mfe'])}"],textposition="bottom center",
-            textfont=dict(size=11,color="#DC2626"),showlegend=False))
+            textfont=dict(size=13,color="#DC2626"),showlegend=False))
         if tea["pot"]:
             fig.add_vline(x=tea["pot"],line_dash="dash",line_color="#059669",line_width=2,
                 annotation_text=f"Payback: {tea['pot_yr']:.1f}yr",annotation_position="top right",
-                annotation_font_color="#059669")
-        fig.add_hline(y=0,line_color="#94a3b8",line_width=1,line_dash="dot")
+                annotation_font=dict(size=13,color="#059669"))
+        fig.add_hline(y=0,line_color="#64748b",line_width=1.5,line_dash="dot")
         fig.update_layout(**_layout("Discounted Cumulative Net Cashflow","USD"))
         fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig,use_container_width=True,key="tea_dcf_d")
@@ -425,13 +443,13 @@ def render_tea_det(df, r_monthly, nm):
         fig = go.Figure()
         m = tea["months"]
         fig.add_trace(go.Scatter(x=m,y=tea["cum_rev"],fill="tozeroy",
-            fillcolor="rgba(37,99,235,.3)",line=dict(color="#2563EB",width=1.5),name="Gross Revenue"))
+            fillcolor="rgba(37,99,235,.45)",line=dict(color="#2563EB",width=2),name="Gross Revenue"))
         net_after_cogs = tea["cum_rev"]-tea["cum_cogs"]
         fig.add_trace(go.Scatter(x=m,y=net_after_cogs,fill="tonexty",
-            fillcolor="rgba(220,38,38,.15)",line=dict(color="#DC2626",width=1),name="After COGS"))
+            fillcolor="rgba(220,38,38,.30)",line=dict(color="#DC2626",width=1.5),name="After COGS"))
         fig.add_trace(go.Scatter(x=m,y=tea["cum_dcf"],fill="tonexty",
-            fillcolor="rgba(249,115,22,.15)",line=dict(color="#0f172a",width=2),name="Net (after OpEx)"))
-        fig.add_hline(y=0,line_color="#94a3b8",line_width=1,line_dash="dot")
+            fillcolor="rgba(148,163,184,.35)",line=dict(color="#0f172a",width=2.5),name="Net (after OpEx)"))
+        fig.add_hline(y=0,line_color="#64748b",line_width=1.5,line_dash="dot")
         fig.update_layout(**_layout("Cashflow Breakdown (Discounted Cumulative)","USD"))
         fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig,use_container_width=True,key="tea_bk_d")
@@ -590,34 +608,33 @@ def render_levelized_det(df, r_monthly, nm):
             if margin_vals[i-1] < 0 and margin_vals[i] >= 0:
                 crossover = float(ms[i]); break
         fig.add_trace(go.Scatter(x=ms, y=lcr_vals,
-            line=dict(color="#DC2626", width=2.5), name="LCR (cost)"))
+            line=dict(color="#DC2626", width=3), name="LCR (cost)"))
         fig.add_trace(go.Scatter(x=ms, y=lrrm_vals,
-            line=dict(color="#2563EB", width=2.5), name="LRRM (revenue)"))
+            line=dict(color="#2563EB", width=3), name="LRRM (revenue)"))
         fig.add_trace(go.Scatter(x=ms, y=margin_vals,
-            fill="tozeroy", fillcolor="rgba(5,150,105,0.1)",
-            line=dict(color="#059669", width=1, dash="dash"), name="Margin"))
+            line=dict(color="#059669", width=1.5, dash="dash"), name="Margin"))
         peak_lcr = float(np.nanmax(lcr_vals))
         fig.update_layout(**_layout("Unit Economics Converge as Fleet Grows", "$/rig-month"))
         fig.update_yaxes(range=[-50000, 50000])
         if peak_lcr > 50000:
             fig.add_annotation(x=ms[0], y=48000,
                 text=f"↑ LCR peaks at ${peak_lcr/1e3:,.0f}K in early months",
-                showarrow=False, font=dict(size=10, color="#DC2626"),
+                showarrow=False, font=dict(size=13, color="#DC2626"),
                 xanchor="left", yanchor="top")
         if crossover:
-            fig.add_vline(x=crossover, line_dash="dash", line_color="#059669", line_width=1.5)
+            fig.add_vline(x=crossover, line_dash="dash", line_color="#059669", line_width=2)
             fig.add_annotation(x=crossover, y=-45000,
                 text=f"Crossover: Month {int(crossover)} ({crossover/12:.1f} yr)",
-                showarrow=False, font=dict(size=10, color="#059669"),
+                showarrow=False, font=dict(size=13, color="#059669"),
                 xanchor="left", yanchor="bottom")
         fig.add_annotation(x=ms[-1], y=lcr_vals[-1],
             text=f"LCR: ${lcr_vals[-1]:,.0f}", showarrow=True, arrowhead=2,
-            arrowcolor="#DC2626", font=dict(size=10, color="#DC2626"), ax=40, ay=-20)
+            arrowcolor="#DC2626", font=dict(size=13, color="#DC2626"), ax=40, ay=-20)
         fig.add_annotation(x=ms[-1], y=lrrm_vals[-1],
             text=f"LRRM: ${lrrm_vals[-1]:,.0f}", showarrow=True, arrowhead=2,
-            arrowcolor="#2563EB", font=dict(size=10, color="#2563EB"), ax=40, ay=20)
+            arrowcolor="#2563EB", font=dict(size=13, color="#2563EB"), ax=40, ay=20)
         fig.update_xaxes(**_xt(nm))
-        fig.add_hline(y=0, line_color="#94a3b8", line_width=1, line_dash="dot")
+        fig.add_hline(y=0, line_color="#64748b", line_width=1.5, line_dash="dot")
         st.plotly_chart(fig, use_container_width=True, key="lev_run_d")
 
 
@@ -766,8 +783,7 @@ def render_lca(df, config, nm):
     with lb:
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=lca_df["month"], y=lca_df["cum_co2"],
-            fill="tozeroy", fillcolor="rgba(5,150,105,0.12)",
-            line=dict(color="#059669", width=2.5), name="Cumulative CO2 Avoided"))
+            line=dict(color="#059669", width=3), name="Cumulative CO2 Avoided",mode="lines"))
         fig.update_layout(**_layout("Cumulative CO2 Avoided", "mt CO2"))
         fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig, use_container_width=True, key="lca_cumulative")
@@ -897,7 +913,7 @@ def render_tea_mc(dfm, mc_data, r_monthly_fallback, nm, band):
         fig.add_trace(go.Box(y=npvs,name="NPV",marker_color="#059669",boxpoints="outliers"))
         fig.add_trace(go.Box(y=mfes,name="MFE",marker_color="#DC2626",boxpoints="outliers"))
         fig.update_layout(**_layout("NPV & MFE Distribution","USD"))
-        fig.add_hline(y=0,line_dash="dot",line_color="#94a3b8")
+        fig.add_hline(y=0,line_dash="dot",line_color="#64748b")
         st.plotly_chart(fig,use_container_width=True,key="tea_box_mc")
 
     la2,lb2=st.columns(2)
@@ -1093,8 +1109,8 @@ if"Determ"in mode:
         st.plotly_chart(fig,use_container_width=True)
 
         fig=go.Figure()
-        fig.add_trace(go.Scatter(x=df["month"],y=df["cumulative_profit"],fill="tozeroy",
-            fillcolor="rgba(37,99,235,.12)",line=dict(color="#1e293b",width=2.5),name="Cumulative"))
+        fig.add_trace(go.Scatter(x=df["month"],y=df["cumulative_profit"],
+            line=dict(color="#1e293b",width=3),name="Cumulative",mode="lines"))
         fig.update_layout(**_layout("Cumulative Profit","USD"));fig.update_xaxes(**xt)
         st.plotly_chart(fig,use_container_width=True)
 
@@ -1172,7 +1188,7 @@ elif"Monte"in mode:
     if mc["bel"]:
         st.divider();st.subheader("⏱️ Breakeven Distribution")
         fig=go.Figure(go.Histogram(x=mc["bel"],nbinsx=min(nm,len(set(mc["bel"]))),
-            marker_color="#2563EB",marker_line_color="#0f172a",marker_line_width=.5))
+            marker_color="#2563EB",marker_line_color="#0f172a",marker_line_width=1))
         fig.update_layout(**_layout("Breakeven Month","Count"));fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig,use_container_width=True)
 
@@ -1295,7 +1311,7 @@ elif"Sensit"in mode:
         else:cs=[[0,"#d1fae5"],[1,"#059669"]]
         fig=go.Figure(go.Heatmap(z=z,x=xl,y=yl,colorscale=cs,zmin=zmin,zmax=zmax,
             text=[[money(z[i,j])for j in range(len(xv))]for i in range(len(yv))],
-            texttemplate="%{text}",textfont=dict(size=10)))
+            texttemplate="%{text}",textfont=dict(size=12)))
         fig.update_layout(**_layout(f"{sa_output}",py_["name"]),height=max(500,sa_steps*45+100))
         fig.update_xaxes(title=px_["name"])
         st.plotly_chart(fig,use_container_width=True)
@@ -1353,16 +1369,16 @@ elif"Invest"in mode:
         fig = go.Figure()
         cp_vals = [r.get("cash_pool", inv_amount) for r in inv_res]
         months_arr = [r["month"] for r in inv_res]
-        fig.add_trace(go.Scatter(x=months_arr, y=cp_vals, fill="tozeroy",
-            fillcolor="rgba(37,99,235,0.12)", line=dict(color="#2563EB", width=2.5),
-            name="Cash Pool"))
+        fig.add_trace(go.Scatter(x=months_arr, y=cp_vals,
+            line=dict(color="#2563EB", width=3),
+            name="Cash Pool",mode="lines"))
         fig.add_hline(y=inv_buffer, line_dash="dash", line_color="#DC2626", line_width=1.5,
             annotation_text=f"Safety Buffer: ${inv_buffer:,.0f}", annotation_position="top right",
-            annotation_font_color="#DC2626")
-        fig.add_hline(y=0, line_color="#94a3b8", line_width=1, line_dash="dot")
+            annotation_font=dict(size=13,color="#DC2626"))
+        fig.add_hline(y=0, line_color="#64748b", line_width=1.5, line_dash="dot")
         fig.add_hline(y=inv_amount, line_dash="dot", line_color="#059669", line_width=1,
             annotation_text=f"Investment: ${inv_amount:,.0f}", annotation_position="bottom right",
-            annotation_font_color="#059669")
+            annotation_font=dict(size=13,color="#059669"))
         fig.update_layout(**_layout("Cash Pool Over Time", "USD"))
         fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig, use_container_width=True, key="inv_cash")
@@ -1397,7 +1413,7 @@ elif"Invest"in mode:
             line=dict(color="#2563EB", width=2.5), name="Funded"))
         fig.add_trace(go.Scatter(x=unc_df["month"], y=unc_df["cumulative_profit"],
             line=dict(color="#94a3b8", width=1.5, dash="dot"), name="Unconstrained"))
-        fig.add_hline(y=0, line_color="#94a3b8", line_width=1, line_dash="dot")
+        fig.add_hline(y=0, line_color="#64748b", line_width=1, line_dash="dot")
         fig.update_layout(**_layout("Cumulative Profit: Funded vs Unconstrained", "USD"))
         fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig, use_container_width=True, key="inv_cum")
@@ -1486,7 +1502,7 @@ elif"Invest"in mode:
         fig.add_trace(go.Scatter(x=[inv_amount/1e6], y=[moic],
             mode="markers", marker=dict(size=14, color="#DC2626", symbol="star"),
             name="Your Investment"))
-        fig.add_hline(y=1.0, line_dash="dash", line_color="#94a3b8",
+        fig.add_hline(y=1.0, line_dash="dash", line_color="#64748b",
             annotation_text="1.0x (break even)", annotation_position="top right")
         fig.update_layout(**_layout("MOIC vs Investment Amount", "Multiple"))
         fig.update_xaxes(title="Investment ($M)")
@@ -1657,16 +1673,16 @@ The model operates in two modes:
                 fig.add_trace(go.Scatter(x=[mo], y=[mpdf], mode="markers+text",
                     marker=dict(size=10, color="#DC2626"),
                     text=[f"Mode: {fmt(mo)}"], textposition="top center",
-                    textfont=dict(size=11, color="#DC2626"),
+                    textfont=dict(size=13, color="#DC2626"),
                     showlegend=False))
 
                 # Mark lo/hi
                 fig.add_vline(x=lo, line_dash="dot", line_color="#64748b", line_width=1,
                     annotation_text=f"Low: {fmt(lo)}", annotation_position="bottom left",
-                    annotation_font_size=10)
+                    annotation_font_size=12)
                 fig.add_vline(x=hi, line_dash="dot", line_color="#64748b", line_width=1,
                     annotation_text=f"High: {fmt(hi)}", annotation_position="bottom right",
-                    annotation_font_size=10)
+                    annotation_font_size=12)
 
                 fig.update_layout(
                     height=280,
