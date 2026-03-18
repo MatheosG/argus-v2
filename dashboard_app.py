@@ -173,17 +173,17 @@ def _layout(title,yt):
         font=dict(family="IBM Plex Sans",size=14,color="#1e293b"),
         plot_bgcolor="#fff",paper_bgcolor="#fff",margin=dict(l=70,r=30,t=100,b=60),
         xaxis=dict(
-            showgrid=True,gridcolor="rgba(148,163,184,0.25)",gridwidth=0.5,griddash="dot",
-            showline=True,linecolor="#0f172a",linewidth=2,
+            showgrid=False,
+            showline=True,linecolor="#0f172a",linewidth=2,mirror=False,
             showticklabels=True,tickfont=dict(color="#1e293b",size=13,family="IBM Plex Sans"),
             ticks="outside",ticklen=6,tickwidth=1.5,tickcolor="#0f172a",
             showspikes=False,
         ),
         yaxis=dict(
             title=dict(text=yt,font=dict(size=14,color="#475569",family="IBM Plex Sans"),standoff=10),
-            showgrid=True,gridcolor="rgba(148,163,184,0.35)",gridwidth=0.8,
-            showline=True,linecolor="#0f172a",linewidth=2,
-            zeroline=True,zerolinecolor="#64748b",zerolinewidth=1.5,
+            showgrid=False,
+            showline=True,linecolor="#0f172a",linewidth=2,mirror=False,
+            zeroline=True,zerolinecolor="#0f172a",zerolinewidth=1.5,
             showticklabels=True,tickfont=dict(color="#1e293b",size=13,family="IBM Plex Sans"),
             ticks="outside",ticklen=6,tickwidth=1.5,tickcolor="#0f172a",
         ),
@@ -442,14 +442,17 @@ def render_tea_det(df, r_monthly, nm):
     with lb:
         fig = go.Figure()
         m = tea["months"]
+        # Layer 1: Gross Revenue fills to zero (bottom layer — visible below net line)
         fig.add_trace(go.Scatter(x=m,y=tea["cum_rev"],fill="tozeroy",
-            fillcolor="rgba(37,99,235,.45)",line=dict(color="#2563EB",width=2),name="Gross Revenue"))
+            fillcolor="rgb(37,99,235)",line=dict(color="#1e3a8a",width=2),name="Gross Revenue"))
+        # Layer 2: After COGS → fills band between revenue and after_cogs (COGS band)
         net_after_cogs = tea["cum_rev"]-tea["cum_cogs"]
         fig.add_trace(go.Scatter(x=m,y=net_after_cogs,fill="tonexty",
-            fillcolor="rgba(220,38,38,.30)",line=dict(color="#DC2626",width=1.5),name="After COGS"))
+            fillcolor="rgb(220,38,38)",line=dict(color="#b91c1c",width=1.5),name="After COGS"))
+        # Layer 3: Net → fills band between after_cogs and net (OpEx band)
         fig.add_trace(go.Scatter(x=m,y=tea["cum_dcf"],fill="tonexty",
-            fillcolor="rgba(148,163,184,.35)",line=dict(color="#0f172a",width=2.5),name="Net (after OpEx)"))
-        fig.add_hline(y=0,line_color="#64748b",line_width=1.5,line_dash="dot")
+            fillcolor="rgb(30,41,59)",line=dict(color="#0f172a",width=2.5),name="Net (after OpEx)"))
+        fig.add_hline(y=0,line_color="#0f172a",line_width=1.5)
         fig.update_layout(**_layout("Cashflow Breakdown (Discounted Cumulative)","USD"))
         fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig,use_container_width=True,key="tea_bk_d")
