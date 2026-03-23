@@ -11,11 +11,11 @@ LOGO = Path(__file__).parent / "logo.png"
 # ═══ CSS ═══
 CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-html,body,[class*="css"]{font-family:'IBM Plex Sans',sans-serif!important}
-h1,h2,h3{font-family:'IBM Plex Sans',sans-serif!important;font-weight:700!important}
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter+Tight:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+html,body,[class*="css"]{font-family:'Inter Tight',sans-serif!important;font-weight:500!important}
+h1,h2,h3{font-family:'Bebas Neue',sans-serif!important;font-weight:400!important;letter-spacing:1px!important}
 [data-testid="stMetricValue"]{font-family:'IBM Plex Mono',monospace!important;font-size:22px!important;font-weight:600!important}
-[data-testid="stMetricLabel"]{font-size:12px!important;font-weight:600!important;text-transform:uppercase!important;letter-spacing:.5px!important}
+[data-testid="stMetricLabel"]{font-family:'Inter Tight',sans-serif!important;font-size:12px!important;font-weight:600!important;text-transform:uppercase!important;letter-spacing:.5px!important}
 .pnl-box{overflow-x:auto;max-height:720px;overflow-y:auto;border-radius:8px;border:1px solid #64748b}
 .pnl-box table{border-collapse:collapse;white-space:nowrap;width:max-content;min-width:100%;font-family:'IBM Plex Mono',monospace;font-size:11px}
 .pnl-box thead th{background:#1e293b;color:#e2e8f0;font-weight:600;text-align:center;padding:8px 12px;border:1px solid #334155;position:sticky;top:0;z-index:10}
@@ -168,35 +168,35 @@ def pnl_html(df, class_names):
 # ═══ Charts ═══
 def _layout(title,yt):
     return dict(
-        title=dict(text=f"<b>{title}</b>",font=dict(size=20,color="#0f172a",family="IBM Plex Sans"),
+        title=dict(text=f"<b>{title}</b>",font=dict(size=24,color="#0f172a",family="Bebas Neue"),
             x=0.01,xanchor="left",y=0.95,yanchor="top",pad=dict(b=12)),
-        font=dict(family="IBM Plex Sans",size=14,color="#1e293b"),
+        font=dict(family="Inter Tight",size=14,color="#1e293b"),
         plot_bgcolor="#fff",paper_bgcolor="#fff",margin=dict(l=70,r=30,t=100,b=60),
         xaxis=dict(
             showgrid=False,
             showline=True,linecolor="#0f172a",linewidth=2,mirror=False,
-            showticklabels=True,tickfont=dict(color="#1e293b",size=13,family="IBM Plex Sans"),
+            showticklabels=True,tickfont=dict(color="#1e293b",size=13,family="Inter Tight"),
             ticks="outside",ticklen=6,tickwidth=1.5,tickcolor="#0f172a",
             showspikes=False,
         ),
         yaxis=dict(
-            title=dict(text=yt,font=dict(size=14,color="#475569",family="IBM Plex Sans"),standoff=10),
+            title=dict(text=yt,font=dict(size=14,color="#475569",family="Inter Tight"),standoff=10),
             showgrid=False,
             showline=True,linecolor="#0f172a",linewidth=2,mirror=False,
             zeroline=True,zerolinecolor="#0f172a",zerolinewidth=1.5,
-            showticklabels=True,tickfont=dict(color="#1e293b",size=13,family="IBM Plex Sans"),
+            showticklabels=True,tickfont=dict(color="#1e293b",size=13,family="Inter Tight"),
             ticks="outside",ticklen=6,tickwidth=1.5,tickcolor="#0f172a",
         ),
         legend=dict(orientation="h",yanchor="bottom",y=1.03,xanchor="right",x=1,
-            font=dict(size=13,color="#1e293b",family="IBM Plex Sans"),
+            font=dict(size=13,color="#1e293b",family="Inter Tight"),
             bgcolor="rgba(255,255,255,0.97)",bordercolor="#94a3b8",borderwidth=1,
             itemsizing="constant"),
-        hoverlabel=dict(font_size=13,font_family="IBM Plex Sans"),
+        hoverlabel=dict(font_size=13,font_family="Inter Tight"),
     )
 
 def _xt(mx):
     v=[0]+list(range(12,mx+1,12));t=["M0"]+[f"Y{m//12}"for m in range(12,mx+1,12)]
-    return dict(tickvals=v,ticktext=t,tickfont=dict(size=13,color="#1e293b"))
+    return dict(tickvals=v,ticktext=t,tickfont=dict(size=13,color="#1e293b",family="Inter Tight"))
 
 def _fan(bd,lo,mid,hi,title,yt):
     fig=go.Figure();m=bd["month"]
@@ -1691,9 +1691,10 @@ The model operates in two modes:
                     height=280,
                     margin=dict(l=40, r=10, t=20, b=40),
                     showlegend=False,
+                    font=dict(family="Inter Tight",size=12),
                     plot_bgcolor="#fff", paper_bgcolor="#fff",
-                    xaxis=dict(showgrid=False, title=info["unit"], linecolor="#1e293b"),
-                    yaxis=dict(showgrid=False, title="Density", linecolor="#1e293b"),
+                    xaxis=dict(showgrid=False, title=dict(text=info["unit"],font=dict(family="Inter Tight",size=12)), linecolor="#1e293b",linewidth=1.5,tickfont=dict(family="Inter Tight",size=11)),
+                    yaxis=dict(showgrid=False, title=dict(text="Density",font=dict(family="Inter Tight",size=12)), linecolor="#1e293b",linewidth=1.5,tickfont=dict(family="Inter Tight",size=11)),
                 )
                 st.plotly_chart(fig, use_container_width=True, key=f"dist_{cn}_{key}_{chart_idx}")
                 chart_idx += 1

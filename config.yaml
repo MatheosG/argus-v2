@@ -45,7 +45,7 @@ rig_classes:
 
   onshore:
     timeline:
-      first_rig_month: 7
+      first_rig_month: 12
     revenue:
       days_per_month: 30
       installation_fee: 10000
@@ -65,7 +65,7 @@ rig_classes:
 
   offshore:
     timeline:
-      first_rig_month: 18
+      first_rig_month: 30
     revenue:
       days_per_month: 30
       installation_fee: 20000
