@@ -1046,7 +1046,7 @@ with st.sidebar:
         st.header("Sensitivity")
         sa_pct=st.number_input("Swing (%)",5,50,20,5)
         sa_steps=st.number_input("Heatmap Steps",5,30,11,2)
-        sa_output=st.selectbox("Metric",["Cumulative Profit","Breakeven Month","Total Revenue","NPV"])
+        sa_output=st.selectbox("Metric",["NPV","Cumulative Profit","Total Revenue","Breakeven Month"])
     elif"Monte"in mode:
         mc_n=st.number_input("Trials",100,50000,_dt,500)
         mc_b=st.selectbox("Band",["P5–P95","P10–P90","P25–P75"])
@@ -1273,12 +1273,17 @@ elif"Sensit"in mode:
     frac=sa_pct/100
     tdata=[]
     for uid,pd_ in all_params.items():
+        # Discount rate only affects NPV — skip for other metrics
+        if pd_["key"]=="discount_rate" and sa_output!="NPV":
+            continue
         mode_val=pd_["mode"]
         vl_param=mode_val*(1-frac)
         vh_param=mode_val*(1+frac)
         vl=run_scenario({uid:vl_param},sa_output);vh=run_scenario({uid:vh_param},sa_output)
+        swing=abs(vh-vl)
+        if swing<0.01:continue  # skip parameters with no impact
         tdata.append({"uid":uid,"name":pd_["name"],"mode":mode_val,
-            "low_param":vl_param,"high_param":vh_param,"rl":vl,"rh":vh,"swing":abs(vh-vl)})
+            "low_param":vl_param,"high_param":vh_param,"rl":vl,"rh":vh,"swing":swing})
     tdata.sort(key=lambda x:x["swing"])
 
     fig=go.Figure()
@@ -1297,6 +1302,12 @@ elif"Sensit"in mode:
         barmode="overlay",height=max(300,len(tdata)*65+100))
     st.plotly_chart(fig,use_container_width=True)
 
+    note_parts = [f"Each parameter swings ±{sa_pct}% from its mode value."]
+    if sa_output != "NPV":
+        note_parts.append("Discount rate excluded (only affects NPV).")
+    note_parts.append("Parameters with identical bars (e.g. utilization & daily rate) are linear multipliers in the same formula — a ±20% change on either produces the same revenue swing.")
+    st.caption(" ".join(note_parts))
+
     # Swing table
     srows=[{"Param":td["name"],"Mode":f'{td["mode"]:.4g}',
             f"-{sa_pct}%":f'{td["low_param"]:.4g}',f"+{sa_pct}%":f'{td["high_param"]:.4g}',
@@ -1307,9 +1318,9 @@ elif"Sensit"in mode:
 
     # Heatmap
     st.divider();st.subheader(f"🔥 Two-Way Heatmap (±{sa_pct}%)")
-    uids=list(all_params.keys())
-    sa_x=st.selectbox("X-axis",uids,index=0)
-    sa_y=st.selectbox("Y-axis",uids,index=min(1,len(uids)-1))
+    hm_uids=[uid for uid in all_params.keys() if not (all_params[uid]["key"]=="discount_rate" and sa_output!="NPV")]
+    sa_x=st.selectbox("X-axis",hm_uids,index=0)
+    sa_y=st.selectbox("Y-axis",hm_uids,index=min(1,len(hm_uids)-1))
     if sa_x==sa_y:st.warning("Pick two different parameters.")
     else:
         px_=all_params[sa_x];py_=all_params[sa_y]
