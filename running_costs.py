@@ -18,27 +18,20 @@ import csv
 import math
 
 
-def _s(v):
-    """Safely strip a CSV value that might be None."""
-    return v.strip() if v else ""
-
-
 def load_running_costs(filepath: str) -> list[dict]:
     """Load running costs CSV into a list of cost item dicts."""
     items = []
     with open(filepath, "r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            # Normalize keys: strip whitespace (handles BOM artifacts)
-            row = {k.strip(): v for k, v in row.items() if k is not None}
             item = {
-                "cost_class": _s(row.get("cost_class", "")),
-                "item": _s(row.get("item", "")),
-                "amount": float(row.get("amount", 0)),
-                "frequency": _s(row.get("frequency", "")),
-                "scaling": _s(row.get("scaling", "")),
-                "scaling_param": float(row["scaling_param"]) if _s(row.get("scaling_param")) else None,
-                "phase": _s(row.get("phase")) or "all",
+                "cost_class": row["cost_class"].strip(),
+                "item": row["item"].strip(),
+                "amount": float(row["amount"]),
+                "frequency": row["frequency"].strip(),
+                "scaling": row["scaling"].strip(),
+                "scaling_param": float(row["scaling_param"]) if row["scaling_param"].strip() else None,
+                "phase": row["phase"].strip() if row["phase"].strip() else "all",
             }
             items.append(item)
     return items
@@ -78,23 +71,19 @@ def compute_monthly_running_costs(
         if not is_active_phase(item["phase"], phase):
             cost = 0.0
         elif item["frequency"] == "onetime" and item["scaling"] == "per_rig":
-            # One-time cost per new rig (COGS)
             cost = new_rigs * item["amount"]
             total_cogs += cost
 
         elif item["frequency"] == "monthly" and item["scaling"] == "per_rig":
             if item["cost_class"] == "depreciation" and item["scaling_param"] is not None:
-                # Depreciation: amount / useful_life_months, per rig
                 monthly_dep = item["amount"] / item["scaling_param"]
                 cost = rig_count * monthly_dep
                 total_depreciation += cost
             else:
-                # Regular monthly per-rig cost
                 cost = rig_count * item["amount"]
                 total_recurring += cost
 
         elif item["frequency"] == "monthly" and item["scaling"] == "per_n_rigs":
-            # Scales per N rigs (e.g. 1 cloud instance per 10 rigs)
             n = item["scaling_param"]
             if rig_count > 0:
                 units = math.ceil(rig_count / n)
@@ -104,7 +93,6 @@ def compute_monthly_running_costs(
             total_recurring += cost
 
         elif item["frequency"] == "monthly" and item["scaling"] == "fixed":
-            # Fixed monthly cost
             cost = item["amount"]
             total_recurring += cost
 
