@@ -443,18 +443,18 @@ def render_tea_det(df, r_monthly, nm):
         fig = go.Figure()
         m = tea["months"]
         net_after_cogs = tea["cum_rev"]-tea["cum_cogs"]
-        # Layer 1 (bottom): Net line — NO fill below (white area = IOC's Take equivalent)
+        # Layer 1 (bottom): Net line — NO fill below = white (like IOC's Take)
         fig.add_trace(go.Scatter(x=m,y=tea["cum_dcf"],
-            line=dict(color="#0f172a",width=2.5),name="Net (after OpEx)",fill=None))
-        # Layer 2: After COGS — fill band between Net and After COGS (OpEx band, dark)
+            line=dict(color="#0f172a",width=3),name="Net (after OpEx)",fill=None))
+        # Layer 2: OpEx band — between Net and After COGS (blue)
         fig.add_trace(go.Scatter(x=m,y=net_after_cogs,fill="tonexty",
-            fillcolor="rgb(30,41,59)",line=dict(color="#1e293b",width=1.5),name="After COGS"))
-        # Layer 3: Revenue — fill band between After COGS and Revenue (COGS band, red)
+            fillcolor="rgb(37,99,235)",line=dict(color="#1e40af",width=1.5),name="OpEx"))
+        # Layer 3: COGS band — between After COGS and Revenue (red)
         fig.add_trace(go.Scatter(x=m,y=tea["cum_rev"],fill="tonexty",
             fillcolor="rgb(185,28,28)",line=dict(color="#991b1b",width=1.5),name="COGS"))
-        # Top line: Gross Revenue label (on top of everything)
+        # Top line: Gross Revenue
         fig.add_trace(go.Scatter(x=m,y=tea["cum_rev"],
-            line=dict(color="#1e3a8a",width=2.5),name="Gross Revenue",showlegend=True))
+            line=dict(color="#0f172a",width=2),name="Gross Revenue",showlegend=True))
         fig.add_hline(y=0,line_color="#0f172a",line_width=1.5)
         fig.update_layout(**_layout("Cashflow Breakdown (Discounted Cumulative)","USD"))
         fig.update_xaxes(**_xt(nm))
@@ -1668,8 +1668,9 @@ The model operates in two modes:
             with col_plot:
                 lo, mo, hi = p["low"], p["mode"], p["high"]
                 c = (mo - lo) / (hi - lo)
-                x = np.linspace(lo - 0.05 * (hi - lo), hi + 0.05 * (hi - lo), 300)
-                pdf = sp_stats.triang.pdf(x, c, loc=lo, scale=hi - lo)
+                span = hi - lo
+                x = np.linspace(lo - 0.15 * span, hi + 0.15 * span, 300)
+                pdf = sp_stats.triang.pdf(x, c, loc=lo, scale=span)
 
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=x, y=pdf, fill="tozeroy",
@@ -1677,7 +1678,7 @@ The model operates in two modes:
                     line=dict(color="#2563EB", width=2), hoverinfo="skip"))
 
                 # Mark mode
-                mpdf = sp_stats.triang.pdf(mo, c, loc=lo, scale=hi - lo)
+                mpdf = sp_stats.triang.pdf(mo, c, loc=lo, scale=span)
                 fig.add_trace(go.Scatter(x=[mo], y=[mpdf], mode="markers+text",
                     marker=dict(size=10, color="#DC2626"),
                     text=[f"Mode: {fmt(mo)}"], textposition="top center",
@@ -1686,19 +1687,19 @@ The model operates in two modes:
 
                 # Mark lo/hi
                 fig.add_vline(x=lo, line_dash="dot", line_color="#64748b", line_width=1,
-                    annotation_text=f"Low: {fmt(lo)}", annotation_position="bottom left",
+                    annotation_text=f"Low: {fmt(lo)}", annotation_position="bottom right",
                     annotation_font_size=12)
                 fig.add_vline(x=hi, line_dash="dot", line_color="#64748b", line_width=1,
-                    annotation_text=f"High: {fmt(hi)}", annotation_position="bottom right",
+                    annotation_text=f"High: {fmt(hi)}", annotation_position="bottom left",
                     annotation_font_size=12)
 
                 fig.update_layout(
                     height=280,
-                    margin=dict(l=40, r=10, t=20, b=40),
+                    margin=dict(l=50, r=50, t=30, b=50),
                     showlegend=False,
                     font=dict(family="Inter Tight",size=12),
                     plot_bgcolor="#fff", paper_bgcolor="#fff",
-                    xaxis=dict(showgrid=False, title=dict(text=info["unit"],font=dict(family="Inter Tight",size=12)), linecolor="#1e293b",linewidth=1.5,tickfont=dict(family="Inter Tight",size=11)),
+                    xaxis=dict(showgrid=False, title=dict(text=info["unit"],font=dict(family="Inter Tight",size=12)), linecolor="#1e293b",linewidth=1.5,tickfont=dict(family="Inter Tight",size=11),range=[lo - 0.12*span, hi + 0.12*span]),
                     yaxis=dict(showgrid=False, title=dict(text="Density",font=dict(family="Inter Tight",size=12)), linecolor="#1e293b",linewidth=1.5,tickfont=dict(family="Inter Tight",size=11)),
                 )
                 st.plotly_chart(fig, use_container_width=True, key=f"dist_{cn}_{key}_{chart_idx}")
