@@ -1675,33 +1675,28 @@ The model operates in two modes:
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=x, y=pdf, fill="tozeroy",
                     fillcolor="rgba(37,99,235,0.15)",
-                    line=dict(color="#2563EB", width=2), hoverinfo="skip"))
+                    line=dict(color="#2563EB", width=2.5), hoverinfo="skip"))
 
                 # Mark mode
                 mpdf = sp_stats.triang.pdf(mo, c, loc=lo, scale=span)
                 fig.add_trace(go.Scatter(x=[mo], y=[mpdf], mode="markers+text",
-                    marker=dict(size=10, color="#DC2626"),
+                    marker=dict(size=12, color="#DC2626"),
                     text=[f"Mode: {fmt(mo)}"], textposition="top center",
-                    textfont=dict(size=13, color="#DC2626"),
+                    textfont=dict(size=14, color="#DC2626"),
                     showlegend=False))
 
                 # Mark lo/hi
-                fig.add_vline(x=lo, line_dash="dot", line_color="#64748b", line_width=1,
+                fig.add_vline(x=lo, line_dash="dot", line_color="#64748b", line_width=1.5,
                     annotation_text=f"Low: {fmt(lo)}", annotation_position="bottom right",
-                    annotation_font_size=12)
-                fig.add_vline(x=hi, line_dash="dot", line_color="#64748b", line_width=1,
+                    annotation_font=dict(size=13, color="#64748b"))
+                fig.add_vline(x=hi, line_dash="dot", line_color="#64748b", line_width=1.5,
                     annotation_text=f"High: {fmt(hi)}", annotation_position="bottom left",
-                    annotation_font_size=12)
+                    annotation_font=dict(size=13, color="#64748b"))
 
-                fig.update_layout(
-                    height=280,
-                    margin=dict(l=50, r=50, t=30, b=50),
-                    showlegend=False,
-                    font=dict(family="Inter Tight",size=12),
-                    plot_bgcolor="#fff", paper_bgcolor="#fff",
-                    xaxis=dict(showgrid=False, title=dict(text=info["unit"],font=dict(family="Inter Tight",size=12)), linecolor="#1e293b",linewidth=1.5,tickfont=dict(family="Inter Tight",size=11),range=[lo - 0.12*span, hi + 0.12*span]),
-                    yaxis=dict(showgrid=False, title=dict(text="Density",font=dict(family="Inter Tight",size=12)), linecolor="#1e293b",linewidth=1.5,tickfont=dict(family="Inter Tight",size=11)),
-                )
+                fig.update_layout(**_layout(info["name"], "Density"),
+                    height=300, showlegend=False)
+                fig.update_xaxes(title=dict(text=info["unit"],font=dict(family="Inter Tight",size=13)),
+                    range=[lo - 0.12*span, hi + 0.12*span])
                 st.plotly_chart(fig, use_container_width=True, key=f"dist_{cn}_{key}_{chart_idx}")
                 chart_idx += 1
 
