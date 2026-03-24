@@ -21,9 +21,11 @@ import math
 def load_running_costs(filepath: str) -> list[dict]:
     """Load running costs CSV into a list of cost item dicts."""
     items = []
-    with open(filepath, "r") as f:
+    with open(filepath, "r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
+            # Normalize keys: strip whitespace (handles BOM artifacts)
+            row = {k.strip(): v for k, v in row.items()}
             item = {
                 "cost_class": row["cost_class"].strip(),
                 "item": row["item"].strip(),

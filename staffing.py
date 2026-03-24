@@ -14,9 +14,11 @@ from pathlib import Path
 def load_staffing(filepath: str) -> list[dict]:
     """Load staffing CSV into a list of role dicts."""
     roles = []
-    with open(filepath, "r") as f:
+    with open(filepath, "r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
+            # Normalize keys: strip whitespace (handles BOM artifacts)
+            row = {k.strip(): v for k, v in row.items()}
             role = {
                 "department": row["department"].strip(),
                 "role": row["role"].strip(),

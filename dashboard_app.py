@@ -1735,11 +1735,22 @@ The model operates in two modes:
     st.markdown("#### Staffing (from staffing.csv)")
     comp_cfg = base["compensation"]
     st.caption(f"Benefits multiplier starts at {comp_cfg['benefits_base']:.0%}, increases {comp_cfg['benefits_quarterly_increase']:.1%} per quarter")
-    staff_df = pd.read_csv(base["files"]["staffing"])
+    staff_df = pd.read_csv(base["files"]["staffing"], encoding="utf-8-sig")
+    # Normalize column names: strip whitespace
+    staff_df.columns = [c.strip() for c in staff_df.columns]
     st.dataframe(staff_df, hide_index=True, use_container_width=True)
 
+    # Debug: raw CSV preview
+    with st.expander("🔍 Raw CSV preview (first 3 lines)"):
+        with open(base["files"]["staffing"], "r", encoding="utf-8-sig") as _f:
+            for i, line in enumerate(_f):
+                if i >= 3: break
+                st.code(line.rstrip(), language="text")
+
     st.markdown("#### Running Costs (from running_costs.csv)")
-    st.dataframe(pd.read_csv(base["files"]["running_costs"]), hide_index=True, use_container_width=True)
+    rc_df = pd.read_csv(base["files"]["running_costs"], encoding="utf-8-sig")
+    rc_df.columns = [c.strip() for c in rc_df.columns]
+    st.dataframe(rc_df, hide_index=True, use_container_width=True)
 
     st.markdown("#### Cost Scaling Logic")
     cost_explain = [
