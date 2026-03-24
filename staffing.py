@@ -11,6 +11,11 @@ import math
 from pathlib import Path
 
 
+def _s(v):
+    """Safely strip a CSV value that might be None."""
+    return v.strip() if v else ""
+
+
 def load_staffing(filepath: str) -> list[dict]:
     """Load staffing CSV into a list of role dicts."""
     roles = []
@@ -18,15 +23,15 @@ def load_staffing(filepath: str) -> list[dict]:
         reader = csv.DictReader(f)
         for row in reader:
             # Normalize keys: strip whitespace (handles BOM artifacts)
-            row = {k.strip(): v for k, v in row.items()}
+            row = {k.strip(): v for k, v in row.items() if k is not None}
             role = {
-                "department": row["department"].strip(),
-                "role": row["role"].strip(),
-                "annual_salary": float(row["annual_salary"]),
-                "headcount": float(row["headcount"]) if row["headcount"].strip() else 0,
-                "from_month": int(row["from_month"]) if row["from_month"].strip() else None,
-                "to_month": int(row["to_month"]) if row["to_month"].strip() else None,
-                "rigs_per_hire": float(row["rigs_per_hire"]) if row["rigs_per_hire"].strip() else None,
+                "department": _s(row.get("department", "")),
+                "role": _s(row.get("role", "")),
+                "annual_salary": float(row.get("annual_salary", 0)),
+                "headcount": float(row["headcount"]) if _s(row.get("headcount")) else 0,
+                "from_month": int(row["from_month"]) if _s(row.get("from_month")) else None,
+                "to_month": int(row["to_month"]) if _s(row.get("to_month")) else None,
+                "rigs_per_hire": float(row["rigs_per_hire"]) if _s(row.get("rigs_per_hire")) else None,
             }
             role["is_scaling"] = role["rigs_per_hire"] is not None
             roles.append(role)

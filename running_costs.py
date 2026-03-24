@@ -18,6 +18,11 @@ import csv
 import math
 
 
+def _s(v):
+    """Safely strip a CSV value that might be None."""
+    return v.strip() if v else ""
+
+
 def load_running_costs(filepath: str) -> list[dict]:
     """Load running costs CSV into a list of cost item dicts."""
     items = []
@@ -25,15 +30,15 @@ def load_running_costs(filepath: str) -> list[dict]:
         reader = csv.DictReader(f)
         for row in reader:
             # Normalize keys: strip whitespace (handles BOM artifacts)
-            row = {k.strip(): v for k, v in row.items()}
+            row = {k.strip(): v for k, v in row.items() if k is not None}
             item = {
-                "cost_class": row["cost_class"].strip(),
-                "item": row["item"].strip(),
-                "amount": float(row["amount"]),
-                "frequency": row["frequency"].strip(),
-                "scaling": row["scaling"].strip(),
-                "scaling_param": float(row["scaling_param"]) if row["scaling_param"].strip() else None,
-                "phase": row["phase"].strip() if row["phase"].strip() else "all",
+                "cost_class": _s(row.get("cost_class", "")),
+                "item": _s(row.get("item", "")),
+                "amount": float(row.get("amount", 0)),
+                "frequency": _s(row.get("frequency", "")),
+                "scaling": _s(row.get("scaling", "")),
+                "scaling_param": float(row["scaling_param"]) if _s(row.get("scaling_param")) else None,
+                "phase": _s(row.get("phase")) or "all",
             }
             items.append(item)
     return items
