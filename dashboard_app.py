@@ -13,7 +13,7 @@ CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter+Tight:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 html,body,[class*="css"]{font-family:'Inter Tight',sans-serif!important;font-weight:500!important}
-h1,h2,h3{font-family:'Bebas Neue',sans-serif!important;font-weight:400!important;letter-spacing:1px!important}
+h1,h2,h3,h4,h5{font-family:'Bebas Neue',sans-serif!important;font-weight:400!important;letter-spacing:1px!important}
 [data-testid="stMetricValue"]{font-family:'IBM Plex Mono',monospace!important;font-size:22px!important;font-weight:600!important}
 [data-testid="stMetricLabel"]{font-family:'Inter Tight',sans-serif!important;font-size:12px!important;font-weight:600!important;text-transform:uppercase!important;letter-spacing:.5px!important}
 .pnl-box{overflow-x:auto;max-height:720px;overflow-y:auto;border-radius:8px;border:1px solid #64748b}
@@ -409,7 +409,7 @@ def render_tea_det(df, r_monthly, nm):
     k1.metric("NPV", money(tea["npv"]))
     k2.metric("IRR", f"{tea['irr']:.1%}" if tea["irr"] else "N/A")
     k3.metric("Payback", f"{tea['pot_yr']:.1f} yr" if tea["pot_yr"] else "Never")
-    k4.metric("Max Funding Exposure", money(tea["mfe"]))
+    k4.metric("Maximum Financial Exposure", money(tea["mfe"]))
 
     # TEA Statement Table
     st.divider()
@@ -434,7 +434,7 @@ def render_tea_det(df, r_monthly, nm):
             fig.add_vline(x=tea["pot"],line_dash="dash",line_color="#059669",line_width=2,
                 annotation_text=f"Payback: {tea['pot_yr']:.1f}yr",annotation_position="top right",
                 annotation_font=dict(size=13,color="#059669"))
-        fig.add_hline(y=0,line_color="#64748b",line_width=1.5,line_dash="dot")
+        fig.add_hline(y=0,line_color="#0f172a",line_width=1.5)
         fig.update_layout(**_layout("Discounted Cumulative Net Cashflow","USD"))
         fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig,use_container_width=True,key="tea_dcf_d")
@@ -442,16 +442,19 @@ def render_tea_det(df, r_monthly, nm):
     with lb:
         fig = go.Figure()
         m = tea["months"]
-        # Layer 1: Gross Revenue fills to zero (bottom layer — visible below net line)
-        fig.add_trace(go.Scatter(x=m,y=tea["cum_rev"],fill="tozeroy",
-            fillcolor="rgb(37,99,235)",line=dict(color="#1e3a8a",width=2),name="Gross Revenue"))
-        # Layer 2: After COGS → fills band between revenue and after_cogs (COGS band)
         net_after_cogs = tea["cum_rev"]-tea["cum_cogs"]
+        # Layer 1 (bottom): Net line — NO fill below (white area = IOC's Take equivalent)
+        fig.add_trace(go.Scatter(x=m,y=tea["cum_dcf"],
+            line=dict(color="#0f172a",width=2.5),name="Net (after OpEx)",fill=None))
+        # Layer 2: After COGS — fill band between Net and After COGS (OpEx band, dark)
         fig.add_trace(go.Scatter(x=m,y=net_after_cogs,fill="tonexty",
-            fillcolor="rgb(220,38,38)",line=dict(color="#b91c1c",width=1.5),name="After COGS"))
-        # Layer 3: Net → fills band between after_cogs and net (OpEx band)
-        fig.add_trace(go.Scatter(x=m,y=tea["cum_dcf"],fill="tonexty",
-            fillcolor="rgb(30,41,59)",line=dict(color="#0f172a",width=2.5),name="Net (after OpEx)"))
+            fillcolor="rgb(30,41,59)",line=dict(color="#1e293b",width=1.5),name="After COGS"))
+        # Layer 3: Revenue — fill band between After COGS and Revenue (COGS band, red)
+        fig.add_trace(go.Scatter(x=m,y=tea["cum_rev"],fill="tonexty",
+            fillcolor="rgb(185,28,28)",line=dict(color="#991b1b",width=1.5),name="COGS"))
+        # Top line: Gross Revenue label (on top of everything)
+        fig.add_trace(go.Scatter(x=m,y=tea["cum_rev"],
+            line=dict(color="#1e3a8a",width=2.5),name="Gross Revenue",showlegend=True))
         fig.add_hline(y=0,line_color="#0f172a",line_width=1.5)
         fig.update_layout(**_layout("Cashflow Breakdown (Discounted Cumulative)","USD"))
         fig.update_xaxes(**_xt(nm))
@@ -637,7 +640,7 @@ def render_levelized_det(df, r_monthly, nm):
             text=f"LRRM: ${lrrm_vals[-1]:,.0f}", showarrow=True, arrowhead=2,
             arrowcolor="#2563EB", font=dict(size=13, color="#2563EB"), ax=40, ay=20)
         fig.update_xaxes(**_xt(nm))
-        fig.add_hline(y=0, line_color="#64748b", line_width=1.5, line_dash="dot")
+        fig.add_hline(y=0, line_color="#0f172a", line_width=1.5)
         st.plotly_chart(fig, use_container_width=True, key="lev_run_d")
 
 
@@ -916,7 +919,7 @@ def render_tea_mc(dfm, mc_data, r_monthly_fallback, nm, band):
         fig.add_trace(go.Box(y=npvs,name="NPV",marker_color="#059669",boxpoints="outliers"))
         fig.add_trace(go.Box(y=mfes,name="MFE",marker_color="#DC2626",boxpoints="outliers"))
         fig.update_layout(**_layout("NPV & MFE Distribution","USD"))
-        fig.add_hline(y=0,line_dash="dot",line_color="#64748b")
+        fig.add_hline(y=0,line_dash="dot",line_color="#94a3b8")
         st.plotly_chart(fig,use_container_width=True,key="tea_box_mc")
 
     la2,lb2=st.columns(2)
@@ -1121,12 +1124,14 @@ if"Determ"in mode:
     sel=st.slider("Month",0,nm,min(12,nm))
     row=df[df["month"]==sel].iloc[0]
     labs=["Revenue","COGS","Comp","Depr","G&A","IT","Net Income"]
+    net_income=float(row["profit"])
     vals=[float(row["total_revenue"]),-float(row["total_cogs"]),-float(row["total_compensation"]),
           -float(row["total_depreciation"]),-float(row["total_ga"]),-float(row["total_it"]),0]
+    texts=[money(abs(v)) for v in vals[:-1]]+[money(net_income)]
     fig=go.Figure(go.Waterfall(orientation="v",measure=["absolute"]+["relative"]*5+["total"],
         x=labs,y=vals,connector=dict(line=dict(color="#94a3b8",width=1,dash="dot")),
         increasing=dict(marker=dict(color="#2563EB")),decreasing=dict(marker=dict(color="#DC2626")),
-        totals=dict(marker=dict(color="#0f172a")),textposition="outside",text=[money(abs(v))for v in vals]))
+        totals=dict(marker=dict(color="#0f172a")),textposition="outside",text=texts))
     fig.update_layout(**_layout(f"Waterfall — Month {sel}","USD"),showlegend=False)
     st.plotly_chart(fig,use_container_width=True)
 
@@ -1378,7 +1383,7 @@ elif"Invest"in mode:
         fig.add_hline(y=inv_buffer, line_dash="dash", line_color="#DC2626", line_width=1.5,
             annotation_text=f"Safety Buffer: ${inv_buffer:,.0f}", annotation_position="top right",
             annotation_font=dict(size=13,color="#DC2626"))
-        fig.add_hline(y=0, line_color="#64748b", line_width=1.5, line_dash="dot")
+        fig.add_hline(y=0, line_color="#0f172a", line_width=1.5)
         fig.add_hline(y=inv_amount, line_dash="dot", line_color="#059669", line_width=1,
             annotation_text=f"Investment: ${inv_amount:,.0f}", annotation_position="bottom right",
             annotation_font=dict(size=13,color="#059669"))
@@ -1416,7 +1421,7 @@ elif"Invest"in mode:
             line=dict(color="#2563EB", width=2.5), name="Funded"))
         fig.add_trace(go.Scatter(x=unc_df["month"], y=unc_df["cumulative_profit"],
             line=dict(color="#94a3b8", width=1.5, dash="dot"), name="Unconstrained"))
-        fig.add_hline(y=0, line_color="#64748b", line_width=1, line_dash="dot")
+        fig.add_hline(y=0, line_color="#94a3b8", line_width=1, line_dash="dot")
         fig.update_layout(**_layout("Cumulative Profit: Funded vs Unconstrained", "USD"))
         fig.update_xaxes(**_xt(nm))
         st.plotly_chart(fig, use_container_width=True, key="inv_cum")
@@ -1505,7 +1510,7 @@ elif"Invest"in mode:
         fig.add_trace(go.Scatter(x=[inv_amount/1e6], y=[moic],
             mode="markers", marker=dict(size=14, color="#DC2626", symbol="star"),
             name="Your Investment"))
-        fig.add_hline(y=1.0, line_dash="dash", line_color="#64748b",
+        fig.add_hline(y=1.0, line_dash="dash", line_color="#94a3b8",
             annotation_text="1.0x (break even)", annotation_position="top right")
         fig.update_layout(**_layout("MOIC vs Investment Amount", "Multiple"))
         fig.update_xaxes(title="Investment ($M)")
@@ -1730,10 +1735,7 @@ The model operates in two modes:
     comp_cfg = base["compensation"]
     st.caption(f"Benefits multiplier starts at {comp_cfg['benefits_base']:.0%}, increases {comp_cfg['benefits_quarterly_increase']:.1%} per quarter")
     staff_df = pd.read_csv(base["files"]["staffing"])
-    display_staff = staff_df.copy()
-    if "annual_salary" in display_staff.columns:
-        display_staff["annual_salary"] = display_staff["annual_salary"].apply(lambda x: f"${x:,.0f}")
-    st.dataframe(display_staff, hide_index=True, use_container_width=True)
+    st.dataframe(staff_df, hide_index=True, use_container_width=True)
 
     st.markdown("#### Running Costs (from running_costs.csv)")
     st.dataframe(pd.read_csv(base["files"]["running_costs"]), hide_index=True, use_container_width=True)
@@ -2027,7 +2029,7 @@ All LCA parameters are configurable in `config.yaml` under the `lca:` section.
 - Rig churn / contract loss (per-class rates)
 - Multiple rig classes with independent markets
 - Stochastic discount rate (triangular distribution)
-- NPV, IRR, Payback Period, Maximum Funding Exposure
+- NPV, IRR, Payback Period, Maximum Financial Exposure
 - Levelized cost metrics (LCR, LCAD, LRRM, ARGUS Ratio)
 - Capital-constrained deployment simulation (InvestNow)
 
