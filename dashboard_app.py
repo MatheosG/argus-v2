@@ -1044,7 +1044,8 @@ with st.sidebar:
         st.caption(f"From config: Tri({_dr_spec['params']['low']:.0%}, {_dr_spec['params']['mode']:.0%}, {_dr_spec['params']['high']:.0%})" if isinstance(_dr_spec, dict) else f"Fixed: {_dr_default:.0%}")
     if"Sensit"in mode:
         st.header("Sensitivity")
-        sa_steps=st.number_input("Steps",5,30,11,2)
+        sa_pct=st.number_input("Swing (%)",5,50,20,5)
+        sa_steps=st.number_input("Heatmap Steps",5,30,11,2)
         sa_output=st.selectbox("Metric",["Cumulative Profit","Breakeven Month","Total Revenue","NPV"])
     elif"Monte"in mode:
         mc_n=st.number_input("Trials",100,50000,_dt,500)
@@ -1267,12 +1268,17 @@ elif"Sensit"in mode:
     is_month="Month"in sa_output
     st.caption(f"**Baseline:** {f'Month {int(baseline)}'if is_month and baseline<=nm else('Never'if is_month else money(baseline))}")
 
-    # Tornado
+    # Tornado — uniform ±pct% swing from mode
     st.subheader("🌪️ Tornado")
+    frac=sa_pct/100
     tdata=[]
     for uid,pd_ in all_params.items():
-        vl=run_scenario({uid:pd_["low"]},sa_output);vh=run_scenario({uid:pd_["high"]},sa_output)
-        tdata.append({"uid":uid,"name":pd_["name"],"low":pd_["low"],"high":pd_["high"],"rl":vl,"rh":vh,"swing":abs(vh-vl)})
+        mode_val=pd_["mode"]
+        vl_param=mode_val*(1-frac)
+        vh_param=mode_val*(1+frac)
+        vl=run_scenario({uid:vl_param},sa_output);vh=run_scenario({uid:vh_param},sa_output)
+        tdata.append({"uid":uid,"name":pd_["name"],"mode":mode_val,
+            "low_param":vl_param,"high_param":vh_param,"rl":vl,"rh":vh,"swing":abs(vh-vl)})
     tdata.sort(key=lambda x:x["swing"])
 
     fig=go.Figure()
@@ -1281,30 +1287,34 @@ elif"Sensit"in mode:
         if lo>hi:lo,hi=hi,lo
         fig.add_trace(go.Bar(y=[td["name"]],x=[lo],orientation="h",base=[baseline],marker_color="#DC2626",
             showlegend=False,text=[money(td["rl"])],textposition="outside",
-            hovertemplate=f'{td["name"]} @ {td["low"]:.2f}: {money(td["rl"])}<extra></extra>'))
+            hovertemplate=f'{td["name"]} @ -{sa_pct}%: {money(td["rl"])}<extra></extra>'))
         fig.add_trace(go.Bar(y=[td["name"]],x=[hi],orientation="h",base=[baseline],marker_color="#2563EB",
             showlegend=False,text=[money(td["rh"])],textposition="outside",
-            hovertemplate=f'{td["name"]} @ {td["high"]:.2f}: {money(td["rh"])}<extra></extra>'))
+            hovertemplate=f'{td["name"]} @ +{sa_pct}%: {money(td["rh"])}<extra></extra>'))
     fig.add_vline(x=baseline,line_dash="dash",line_color="#0f172a",line_width=2,
         annotation_text=f"Base: {money(baseline)}",annotation_position="top")
-    fig.update_layout(**_layout(f"Tornado — {sa_output}",sa_output),barmode="overlay",height=max(300,len(tdata)*65+100))
+    fig.update_layout(**_layout(f"Tornado — {sa_output} (±{sa_pct}% from mode)",sa_output),
+        barmode="overlay",height=max(300,len(tdata)*65+100))
     st.plotly_chart(fig,use_container_width=True)
 
     # Swing table
-    srows=[{"Param":td["name"],"Low":f'{td["low"]:.2f}',"High":f'{td["high"]:.2f}',
-            f"{sa_output} @ Low":money(td["rl"]),f"{sa_output} @ High":money(td["rh"]),"Swing":money(td["swing"])}
+    srows=[{"Param":td["name"],"Mode":f'{td["mode"]:.4g}',
+            f"-{sa_pct}%":f'{td["low_param"]:.4g}',f"+{sa_pct}%":f'{td["high_param"]:.4g}',
+            f"{sa_output} @ -{sa_pct}%":money(td["rl"]),f"{sa_output} @ +{sa_pct}%":money(td["rh"]),
+            "Swing":money(td["swing"])}
            for td in sorted(tdata,key=lambda x:-x["swing"])]
     st.dataframe(pd.DataFrame(srows),hide_index=True,use_container_width=True)
 
     # Heatmap
-    st.divider();st.subheader("🔥 Two-Way Heatmap")
+    st.divider();st.subheader(f"🔥 Two-Way Heatmap (±{sa_pct}%)")
     uids=list(all_params.keys())
     sa_x=st.selectbox("X-axis",uids,index=0)
     sa_y=st.selectbox("Y-axis",uids,index=min(1,len(uids)-1))
     if sa_x==sa_y:st.warning("Pick two different parameters.")
     else:
         px_=all_params[sa_x];py_=all_params[sa_y]
-        xv=np.linspace(px_["low"],px_["high"],sa_steps);yv=np.linspace(py_["low"],py_["high"],sa_steps)
+        xv=np.linspace(px_["mode"]*(1-frac),px_["mode"]*(1+frac),sa_steps)
+        yv=np.linspace(py_["mode"]*(1-frac),py_["mode"]*(1+frac),sa_steps)
         with st.spinner(f"Running {sa_steps**2} scenarios..."):
             z=np.zeros((len(yv),len(xv)))
             for i,y_ in enumerate(yv):
