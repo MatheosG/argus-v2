@@ -85,7 +85,7 @@ rig_classes:
 
   On2:
     timeline:
-      first_rig_month: 36
+      first_rig_month: 18
     revenue:
       days_per_month: 30
       installation_fee: 10000
