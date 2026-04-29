@@ -103,25 +103,25 @@ rig_classes:
         distribution: triangular
         params: { low: 0.27, mode: 0.44, high: 0.67 }
 
-  # off2:
-  #     timeline:
-  #       first_rig_month: 42
-  #     revenue:
-  #       days_per_month: 30
-  #       installation_fee: 20000
-  #     market:
-  #       total_rigs_added:
-  #         distribution: triangular
-  #         params: { low: 20, mode: 20, high: 20 }
-  #       rigs_lost_per_year:
-  #         distribution: triangular
-  #         params: { low: 0, mode: 1, high: 3 }
-  #       daily_rate:
-  #         distribution: triangular
-  #         params: { low: 2500, mode: 2500, high: 2500 }
-  #       utilization_rate:
-  #         distribution: triangular
-  #         params: { low: 0.80, mode: 0.88, high: 0.95 }
+  off2:
+      timeline:
+        first_rig_month: 24
+      revenue:
+        days_per_month: 30
+        installation_fee: 20000
+      market:
+        total_rigs_added:
+          distribution: triangular
+          params: { low: 20, mode: 20, high: 20 }
+        rigs_lost_per_year:
+          distribution: triangular
+          params: { low: 0, mode: 1, high: 3 }
+        daily_rate:
+          distribution: triangular
+          params: { low: 2500, mode: 2500, high: 2500 }
+        utilization_rate:
+          distribution: triangular
+          params: { low: 0.80, mode: 0.88, high: 0.95 }
 
   # On3:
   #   timeline:
