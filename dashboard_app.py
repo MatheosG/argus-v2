@@ -1061,7 +1061,7 @@ with st.sidebar:
     st.header("🗓️ Deployment Windows")
     st.caption("Start & stop adding new rigs for each class. Fleet keeps earning after the end month.")
     _sidebar_windows = {}
-    for _cn, _cls in _c.get("rig_classes", {}).items():
+    for _cn, _cls in (_c.get("rig_classes", {}) if '_c' in dir() else {}).items():
         _tl = _cls.get("timeline", {})
         _frm_def = int(_tl.get("first_rig_month", 12))
         _lrm_def = int(_tl.get("last_rig_month", _dm))
