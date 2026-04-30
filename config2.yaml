@@ -4,7 +4,7 @@
 
 simulation:
   n_trials: 1000
-  months: 60        # 10-year projection
+  months: 132        # 11-year projection
   seed: 42
 
 # --- File References ---
@@ -46,6 +46,7 @@ rig_classes:
   On1:
     timeline:
       first_rig_month: 6
+      last_rig_month: 60
     revenue:
       days_per_month: 30
       installation_fee: 10000
@@ -66,6 +67,7 @@ rig_classes:
   off1:
       timeline:
         first_rig_month: 12
+        last_rig_month: 60
       revenue:
         days_per_month: 30
         installation_fee: 20000
@@ -85,7 +87,8 @@ rig_classes:
 
   On2:
     timeline:
-      first_rig_month: 18
+      first_rig_month: 60
+       last_rig_month: 96
     revenue:
       days_per_month: 30
       installation_fee: 10000
@@ -105,7 +108,8 @@ rig_classes:
 
   off2:
       timeline:
-        first_rig_month: 24
+        first_rig_month: 66
+        last_rig_month: 96
       revenue:
         days_per_month: 30
         installation_fee: 20000
@@ -125,7 +129,8 @@ rig_classes:
 
   On3:
     timeline:
-      first_rig_month: 18
+      first_rig_month: 96
+      last_rig_month: 132
     revenue:
       days_per_month: 30
       installation_fee: 10000
@@ -145,7 +150,8 @@ rig_classes:
 
   off3:
       timeline:
-        first_rig_month: 24
+        first_rig_month: 102
+        last_rig_month: 132
       revenue:
         days_per_month: 30
         installation_fee: 20000
