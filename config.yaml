@@ -9,7 +9,7 @@ simulation:
 
 # --- File References ---
 files:
-  staffing: "inputs/staffing.csv"
+  staffing: "inputs/staffing_final.csv"
   running_costs: "inputs/running_costs.csv"
 
 # --- Compensation Rules ---
