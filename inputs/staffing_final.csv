@@ -1,0 +1,8 @@
+department,role,annual_salary,headcount,from_month,to_month,rigs_per_hire
+g&a,CEO,175000,1,1,132,
+g&a,CFO,120000,1,1,132,
+marketing,CPO / Product Manager,120000,1,1,132,
+engineering,CTO,175000,1,1,132,
+engineering,Back End Developer Sr,125000,,,,50
+engineering,Back End Developer Ssr,100000,,,,20
+sales,Regional Sales,100000,,,,50
