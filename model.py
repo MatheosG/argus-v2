@@ -16,15 +16,20 @@ from running_costs import compute_monthly_running_costs
 # Per-class rig simulation
 # ─────────────────────────────────────────
 def simulate_class_rigs(
-    first_rig_month: int, month: int, current_rigs: int,
+    first_rig_month: int, last_rig_month: int, month: int, current_rigs: int,
     avg_rigs_per_month: float, monthly_churn_prob: float,
     rng: np.random.Generator, deterministic: bool = False,
 ) -> tuple[int, int, int]:
-    """Simulate rig additions and churn for one rig class."""
+    """Simulate rig additions and churn for one rig class.
+
+    New rigs are added only in [first_rig_month, last_rig_month].
+    After last_rig_month the existing fleet keeps generating revenue
+    (and still churns), but no new deployments occur.
+    """
     if month < first_rig_month:
         return 0, 0, 0
 
-    # Churn
+    # Churn — continues for the lifetime of the fleet
     rigs_lost = 0
     if current_rigs > 0 and monthly_churn_prob > 0:
         if deterministic:
@@ -34,18 +39,20 @@ def simulate_class_rigs(
 
     after_churn = current_rigs - rigs_lost
 
-    # Additions
-    if deterministic:
-        months_active = month - first_rig_month + 1
-        target = round(avg_rigs_per_month * months_active)
-        prev = round(avg_rigs_per_month * (months_active - 1)) if months_active > 1 else 0
-        rigs_added = max(target - prev, 0)
-    else:
-        rigs_added = rng.poisson(avg_rigs_per_month)
+    # Additions — only allowed within the deployment window
+    rigs_added = 0
+    if month <= last_rig_month:
+        if deterministic:
+            months_active = month - first_rig_month + 1
+            target = round(avg_rigs_per_month * months_active)
+            prev = round(avg_rigs_per_month * (months_active - 1)) if months_active > 1 else 0
+            rigs_added = max(target - prev, 0)
+        else:
+            rigs_added = rng.poisson(avg_rigs_per_month)
 
-    # First month must have at least 1
-    if month == first_rig_month and current_rigs == 0:
-        rigs_added = max(rigs_added, 1)
+        # First month must have at least 1
+        if month == first_rig_month and current_rigs == 0:
+            rigs_added = max(rigs_added, 1)
 
     new_count = max(after_churn + rigs_added, 0)
     return new_count, rigs_added, rigs_lost
@@ -95,7 +102,7 @@ def compute_month(
         prior_rigs = prior["by_class"][cls_name]["rigs"] if prior and cls_name in prior.get("by_class", {}) else 0
 
         rigs, added, lost = simulate_class_rigs(
-            cp["first_rig_month"], month, prior_rigs,
+            cp["first_rig_month"], cp["last_rig_month"], month, prior_rigs,
             cp["avg_rigs_per_month"], cp["churn_prob"],
             rng, deterministic,
         )
@@ -185,10 +192,13 @@ def _build_class_params(config: dict) -> dict:
     for cls_name, cls_cfg in config.get("rig_classes", {}).items():
         mkt = cls_cfg["market"]
         frm = cls_cfg["timeline"]["first_rig_month"]
-        prod_months = n_months - frm + 1
-        prod_months = max(prod_months, 1)
+        lrm = cls_cfg["timeline"].get("last_rig_month", n_months)
+        lrm = max(lrm, frm)  # guard: last >= first
 
-        avg_rigs = mkt["total_rigs_added"] / prod_months
+        # avg_rigs_per_month is calibrated to the deployment window only
+        ramp_months = max(lrm - frm + 1, 1)
+        avg_rigs = mkt["total_rigs_added"] / ramp_months
+
         expected_avg = max(mkt["total_rigs_added"] / 2, 1)
         churn = mkt["rigs_lost_per_year"] / 12 / expected_avg
 
@@ -196,6 +206,7 @@ def _build_class_params(config: dict) -> dict:
             "avg_rigs_per_month": avg_rigs,
             "churn_prob": churn,
             "first_rig_month": frm,
+            "last_rig_month": lrm,
             "market": mkt,
             "revenue": cls_cfg["revenue"],
         }
