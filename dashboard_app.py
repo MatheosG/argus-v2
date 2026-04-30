@@ -1056,10 +1056,30 @@ with st.sidebar:
         inv_buffer=st.number_input("Safety Buffer ($)",0,500_000,50_000,10_000)
         inv_priority=st.selectbox("Deploy Priority",["onshore_first","offshore_first","balanced"])
 
+    # ── Per-class deployment windows ──
+    st.divider()
+    st.header("🗓️ Deployment Windows")
+    st.caption("Start & stop adding new rigs for each class. Fleet keeps earning after the end month.")
+    _sidebar_windows = {}
+    for _cn, _cls in _c.get("rig_classes", {}).items():
+        _tl = _cls.get("timeline", {})
+        _frm_def = int(_tl.get("first_rig_month", 12))
+        _lrm_def = int(_tl.get("last_rig_month", _dm))
+        st.markdown(f"**{_cn.title()}**")
+        _c1, _c2 = st.columns(2)
+        _frm_v = _c1.number_input(f"Start", 1, _dm, _frm_def, 1, key=f"frm_{_cn}")
+        _lrm_v = _c2.number_input(f"End", _frm_v, _dm, max(_lrm_def, _frm_v), 1, key=f"lrm_{_cn}")
+        _sidebar_windows[_cn] = {"first_rig_month": int(_frm_v), "last_rig_month": int(_lrm_v)}
+
 try:
     base=load_config(cp);base["simulation"]["months"]=nm
     ro=load_staffing(base["files"]["staffing"]);ci=load_running_costs(base["files"]["running_costs"])
     cnames=get_class_names(base)
+    # Apply sidebar deployment window overrides
+    for _cn, _wins in _sidebar_windows.items():
+        if _cn in base.get("rig_classes", {}):
+            base["rig_classes"][_cn]["timeline"]["first_rig_month"] = _wins["first_rig_month"]
+            base["rig_classes"][_cn]["timeline"]["last_rig_month"] = _wins["last_rig_month"]
 except Exception as e:st.error(f"Load error: {e}");st.stop()
 
 # ─── DETERMINISTIC ───
@@ -1603,10 +1623,11 @@ The model operates in two modes:
     ]
     for cn in cnames:
         frm = base["rig_classes"][cn]["timeline"]["first_rig_month"]
+        lrm = base["rig_classes"][cn]["timeline"].get("last_rig_month", nm)
         tl_rows.append([f"{cn.title()} First Rig", f"Month {frm}", f"First {cn} rig goes live"])
-    for cn in cnames:
-        frm = base["rig_classes"][cn]["timeline"]["first_rig_month"]
-        tl_rows.append([f"{cn.title()} Prod Months", f"{nm - frm + 1} months", f"Months {frm}–{nm}"])
+        tl_rows.append([f"{cn.title()} Last Deploy", f"Month {lrm}", f"No new {cn} rigs after this; fleet keeps earning"])
+        tl_rows.append([f"{cn.title()} Ramp Window", f"{lrm - frm + 1} months (M{frm}–M{lrm})", f"Period over which {cn} rigs are added"])
+        tl_rows.append([f"{cn.title()} Revenue Tail", f"{max(nm - lrm, 0)} months (M{lrm+1}–M{nm})", f"Fleet earns, no new {cn} deployments"])
     st.dataframe(pd.DataFrame(tl_rows, columns=["Parameter", "Value", "Description"]),
                  hide_index=True, use_container_width=True)
 
@@ -1651,8 +1672,9 @@ The model operates in two modes:
         mkt_raw = base["rig_classes"][cn]["market"]
         rev_cfg = base["rig_classes"][cn]["revenue"]
         frm = base["rig_classes"][cn]["timeline"]["first_rig_month"]
+        lrm = base["rig_classes"][cn]["timeline"].get("last_rig_month", nm)
 
-        st.caption(f"First rig: Month {frm} · Install fee: ${rev_cfg['installation_fee']:,} · Days/month: {rev_cfg['days_per_month']}")
+        st.caption(f"Deploy window: Month {frm} → Month {lrm} · Install fee: ${rev_cfg['installation_fee']:,} · Days/month: {rev_cfg['days_per_month']}")
 
         for key, val in mkt_raw.items():
             if not (isinstance(val, dict) and val.get("distribution") == "triangular"):
